@@ -41,3 +41,8 @@ tags
 # Persistent undo
 [._]*.un~
 .pre-commit-config.yaml
+
+
+# Added by cargo
+
+/target
