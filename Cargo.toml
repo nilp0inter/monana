@@ -10,9 +10,11 @@ camino = { version = "1.1.10", features = ["serde1"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 clap = { version = "4.5.42", features = ["derive"] }
 image = "0.25.6"
+lazy_static = "1.5.0"
 md5 = "0.8.0"
 nom-exif = "2.5.4"
 notify = "8.2.0"
+regex = "1.11.1"
 reverse_geocoder = "4.1.1"
 rhai = "1.22.2"
 serde = { version = "1.0.219", features = ["derive"] }
