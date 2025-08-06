@@ -1,0 +1,184 @@
+# MONANA Configuration File
+# Media Organization, Normalization, and Archival via Named Automation
+
+# Custom action definitions
+actions:
+  # Optimize images using ImageMagick
+  optimize_image:
+    cmd: "convert '{source.original}' -quality 85 -strip '{destination}'"
+
+  # Create thumbnail
+  create_thumbnail:
+    cmd: "convert '{source.original}' -resize 200x200^ -gravity center -extent 200x200 '{destination}'"
+
+  # Extract video frame
+  extract_frame:
+    cmd: "ffmpeg -i '{source.original}' -ss 00:00:05 -vframes 1 '{destination}'"
+
+# Rulesets for media organization
+rulesets:
+  # Primary photo organization by date and location
+  - name: organize_photos
+    input: cmdline
+    rules:
+      # Professional camera photos with GPS
+      - condition: 'media_type == "image" && media_camera_make != "" && space_city != ""'
+        template: "Photos/{time.yyyy}/{time.month_name}/{space.city}/{time.yyyy}-{time.mm}-{time.dd}_{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Professional camera photos without GPS
+      - condition: 'media_type == "image" && media_camera_make != ""'
+        template: "Photos/{time.yyyy}/{time.month_name}/Unsorted/{time.yyyy}-{time.mm}-{time.dd}_{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Smartphone photos with location
+      - condition: 'media_type == "image" && space_city != ""'
+        template: "Photos/{time.yyyy}/{time.month_name}/Mobile/{space.city}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Screenshots (typically have specific dimensions or no EXIF)
+      - condition: 'media_type == "image" && media_camera_make == "" && (media_width == 2880 || media_width == 1920)'
+        template: "Photos/Screenshots/{time.yyyy}/{time.mm}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Default photo organization
+      - condition: 'media_type == "image"'
+        template: "Photos/{time.yyyy}/{time.mm}/{time.dd}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+  # Video organization
+  - name: organize_videos
+    input: cmdline
+    rules:
+      # Long videos (movies, recordings)
+      - condition: 'media_type == "video" && media_duration > 600'
+        template: "Videos/Movies/{time.yyyy}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Short videos with location
+      - condition: 'media_type == "video" && space_city != ""'
+        template: "Videos/{time.yyyy}/{space.city}/{time.yyyy}-{time.mm}-{time.dd}_{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Default video organization
+      - condition: 'media_type == "video"'
+        template: "Videos/{time.yyyy}/{time.mm}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+  # Create a browsable archive with symlinks
+  - name: create_browse_archive
+    input: "ruleset:organize_photos"
+    rules:
+      # Create by-date browse structure
+      - condition: 'media_type == "image"'
+        template: "Browse/ByDate/{time.yyyy}/{time.month_name}/{time.dd}/{source.name}.{source.extension}"
+        action: symlink
+
+      # Create by-location browse structure
+      - condition: 'media_type == "image" && space_country != ""'
+        template: "Browse/ByLocation/{space.country}/{space.city}/{time.yyyy}-{time.mm}-{time.dd}_{source.name}.{source.extension}"
+        action: symlink
+
+  # Create symlink organization (safe, doesn't move files)
+  - name: organize_symlinks
+    input: cmdline
+    rules:
+      # Professional camera photos with GPS
+      - condition: 'media_type == "image" && media_camera_make != "" && space_city != ""'
+        template: "Archive/{time.yyyy}/{time.month_name}/{space.city}/{time.yyyy}-{time.mm}-{time.dd}_{source.name}.{source.extension}"
+        action: symlink
+
+      # Professional camera photos without GPS
+      - condition: 'media_type == "image" && media_camera_make != ""'
+        template: "Archive/{time.yyyy}/{time.month_name}/Unsorted/{time.yyyy}-{time.mm}-{time.dd}_{source.name}.{source.extension}"
+        action: symlink
+
+      # Smartphone photos with location
+      - condition: 'media_type == "image" && space_city != ""'
+        template: "Archive/{time.yyyy}/{time.month_name}/Mobile/{space.city}/{source.name}.{source.extension}"
+        action: symlink
+
+      # Default photo organization
+      - condition: 'media_type == "image"'
+        template: "Archive/{time.yyyy}/{time.mm}/{time.dd}/{source.name}.{source.extension}"
+        action: symlink
+
+  # Process RAW files
+  - name: process_raw_files
+    input: cmdline
+    rules:
+      # Canon RAW files
+      - condition: 'media_type == "image" && (source_extension == "cr2" || source_extension == "cr3")'
+        template: "Photos/RAW/Canon/{time.yyyy}/{time.mm}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Nikon RAW files
+      - condition: 'media_type == "image" && (source_extension == "nef" || source_extension == "nrw")'
+        template: "Photos/RAW/Nikon/{time.yyyy}/{time.mm}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Sony RAW files
+      - condition: 'media_type == "image" && source_extension == "arw"'
+        template: "Photos/RAW/Sony/{time.yyyy}/{time.mm}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+  # Special events organization
+  - name: organize_events
+    input: cmdline
+    rules:
+      # Christmas photos
+      - condition: 'media_type == "image" && time_mm == "12" && time_dd >= "24" && time_dd <= "26"'
+        template: "Photos/Events/Christmas/{time.yyyy}/{source.name}.{source.extension}"
+        action: copy
+
+      # New Year photos
+      - condition: 'media_type == "image" && ((time_mm == "12" && time_dd == "31") || (time_mm == "01" && time_dd == "01"))'
+        template: "Photos/Events/NewYear/{time.yyyy}/{source.name}.{source.extension}"
+        action: copy
+
+      # Summer vacation (July-August)
+      - condition: 'media_type == "image" && (time_mm == "07" || time_mm == "08") && space_country != space_country_code'
+        template: "Photos/Events/Vacation/{time.yyyy}/{space.country}/{source.name}.{source.extension}"
+        action: copy
+
+  # Backup important files
+  - name: backup_originals
+    input: "ruleset:organize_photos"
+    rules:
+      # Backup all RAW files
+      - condition: 'media_type == "image" && (source_extension == "cr2" || source_extension == "cr3" || source_extension == "nef" || source_extension == "arw")'
+        template: "Backup/RAW/{time.yyyy}/{time.mm}/{source.name}.{source.extension}"
+        action: hardlink
+
+      # Backup professional camera JPEGs
+      - condition: 'media_type == "image" && media_camera_make && source_extension == "jpg"'
+        template: "Backup/JPEG/{time.yyyy}/{time.mm}/{source.name}.{source.extension}"
+        action: hardlink
+
+  # Watch folder for automatic import
+  - name: auto_import
+    input: "watch:/home/user/Pictures/Import"
+    rules:
+      # Process all images
+      - condition: 'media_type == "image"'
+        template: "Incoming/{time.yyyy}/{time.mm}/{time.dd}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+      # Process all videos
+      - condition: 'media_type == "video"'
+        template: "Incoming/Videos/{time.yyyy}/{time.mm}/{source.name}.{source.extension}"
+        action: copy # Changed from move to copy
+
+  # Create web-optimized versions
+  - name: web_optimize
+    input: "ruleset:organize_photos"
+    rules:
+      # Optimize large images for web
+      - condition: 'media_type == "image" && (media_width > 2000 || media_height > 2000)'
+        template: "Web/Full/{time.yyyy}/{time.mm}/{source.name}.jpg"
+        action: "cmd:optimize_image"
+
+      # Create thumbnails
+      - condition: 'media_type == "image"'
+        template: "Web/Thumbs/{time.yyyy}/{time.mm}/{source.name}_thumb.jpg"
+        action: "cmd:create_thumbnail"

@@ -118,17 +118,33 @@ fn extract_exif_metadata(path: &Utf8Path) -> Result<MediaContext> {
             if let Some(tag) = entry.tag() {
                 match tag {
                     ExifTag::DateTimeOriginal | ExifTag::CreateDate => {
-                        eprintln!("DEBUG: Found date tag {tag:?} with value: {value:?}");
+                        // Found date tag
                         // Try as string first
                         if let Some(datetime_str) = value.as_str() {
                             if let Ok(dt) = parse_exif_datetime(datetime_str) {
                                 context.time = create_time_context(dt);
-                                eprintln!("DEBUG: Parsed EXIF date from string: {datetime_str}");
+                                // Parsed EXIF date from string
                             }
                         } else {
-                            // Try to get NaiveDateTime from the debug representation
+                            // Try to parse from debug representation
                             let debug_str = format!("{value:?}");
-                            if debug_str.starts_with("NaiveDateTime(") && debug_str.ends_with(")") {
+
+                            // Handle Time(YYYY-MM-DDTHH:MM:SS+TZ:TZ) format
+                            if debug_str.starts_with("Time(") && debug_str.ends_with(")") {
+                                if let Some(dt_str) = debug_str
+                                    .strip_prefix("Time(")
+                                    .and_then(|s| s.strip_suffix(")"))
+                                {
+                                    if let Ok(dt) = DateTime::parse_from_rfc3339(dt_str) {
+                                        context.time = create_time_context(dt.with_timezone(&Utc));
+                                        // Parsed EXIF date from Time
+                                    }
+                                }
+                            }
+                            // Handle NaiveDateTime format
+                            else if debug_str.starts_with("NaiveDateTime(")
+                                && debug_str.ends_with(")")
+                            {
                                 if let Some(dt_str) = debug_str
                                     .strip_prefix("NaiveDateTime(")
                                     .and_then(|s| s.strip_suffix(")"))
@@ -141,9 +157,7 @@ fn extract_exif_metadata(path: &Utf8Path) -> Result<MediaContext> {
                                             naive_dt, Utc,
                                         );
                                         context.time = create_time_context(dt);
-                                        eprintln!(
-                                            "DEBUG: Parsed EXIF date from NaiveDateTime: {dt_str}"
-                                        );
+                                        // Parsed EXIF date from NaiveDateTime
                                     }
                                 }
                             }
@@ -175,7 +189,7 @@ fn extract_exif_metadata(path: &Utf8Path) -> Result<MediaContext> {
                         }
                     }
                     _ => {
-                        eprintln!("DEBUG: Found tag {tag:?} = {value:?}");
+                        // Other EXIF tags
                     }
                 }
             }
@@ -234,7 +248,14 @@ fn apply_fallbacks(context: &mut MediaContext, path: &Utf8Path) -> Result<()> {
         }
     }
 
-    // Use filesystem timestamp if no EXIF date
+    // Try to extract date from filename for videos
+    if context.time.timestamp.is_none() && context.media.r#type == "video" {
+        if let Some(dt) = extract_date_from_filename(path) {
+            context.time = create_time_context(dt);
+        }
+    }
+
+    // Use filesystem timestamp if no EXIF date or filename date
     if context.time.timestamp.is_none() {
         if let Ok(metadata) = fs::metadata(path) {
             if let Ok(created) = metadata.created() {
@@ -245,6 +266,68 @@ fn apply_fallbacks(context: &mut MediaContext, path: &Utf8Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn extract_date_from_filename(path: &Utf8Path) -> Option<DateTime<Utc>> {
+    let filename = path.file_name()?;
+
+    // Common video filename patterns:
+    // VID_20180120_185352.mp4
+    // 2018-01-20 15.46.55.mp4
+    // IMG_20180120_154209.jpg
+
+    // Look for 8 consecutive digits (YYYYMMDD)
+    let chars: Vec<char> = filename.chars().collect();
+    for i in 0..chars.len().saturating_sub(7) {
+        if chars[i..i + 8].iter().all(|c| c.is_ascii_digit()) {
+            let date_str: String = chars[i..i + 8].iter().collect();
+            if let Ok(year) = date_str[0..4].parse::<i32>() {
+                if let Ok(month) = date_str[4..6].parse::<u32>() {
+                    if let Ok(day) = date_str[6..8].parse::<u32>() {
+                        if (1900..=2100).contains(&year)
+                            && (1..=12).contains(&month)
+                            && (1..=31).contains(&day)
+                        {
+                            if let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
+                                if let Some(datetime) = date.and_hms_opt(0, 0, 0) {
+                                    return Some(DateTime::from_naive_utc_and_offset(
+                                        datetime, Utc,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Look for YYYY-MM-DD pattern
+    if filename.contains('-') {
+        let parts: Vec<&str> = filename.split(&['-', ' ', '.'][..]).collect();
+        if parts.len() >= 3 {
+            if let Ok(year) = parts[0].parse::<i32>() {
+                if let Ok(month) = parts[1].parse::<u32>() {
+                    if let Ok(day) = parts[2].parse::<u32>() {
+                        if (1900..=2100).contains(&year)
+                            && (1..=12).contains(&month)
+                            && (1..=31).contains(&day)
+                        {
+                            if let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
+                                if let Some(datetime) = date.and_hms_opt(0, 0, 0) {
+                                    return Some(DateTime::from_naive_utc_and_offset(
+                                        datetime, Utc,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 fn apply_defaults(context: &mut MediaContext) {
