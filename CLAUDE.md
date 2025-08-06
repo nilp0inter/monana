@@ -13,13 +13,15 @@ This project uses **Nix + Direnv** as the official development environment. The 
 ## Development Commands
 
 ### Devshell Commands (Preferred)
+
 - `build` - Build the project (cargo build)
-- `test` - Run tests (cargo test) 
+- `test` - Run tests (cargo test)
 - `check` - Run cargo check
 - `fmt` - Format all files with treefmt
 - `install-hooks` - Install git hooks (auto-installed on devshell entry)
 
 ### Direct Cargo Commands (CI-equivalent)
+
 - `cargo build` - Build the project
 - `cargo test --verbose` - Run tests (matches CI)
 - `cargo clippy --all-targets --all-features -- -D warnings` - Lint (matches CI)
@@ -28,8 +30,9 @@ This project uses **Nix + Direnv** as the official development environment. The 
 ## Pre-commit Hooks
 
 Git hooks automatically run on commit and match CI requirements:
+
 - `rustfmt` - Code formatting check
-- `cargo-clippy` - Linting with warnings as errors  
+- `cargo-clippy` - Linting with warnings as errors
 - `cargo-test` - Full test suite
 
 ## Architecture Overview
@@ -37,12 +40,14 @@ Git hooks automatically run on commit and match CI requirements:
 The system follows a declarative pipeline model with these core components:
 
 ### Data Acquisition Pipeline
+
 1. **Ingestion** - Identify media files for processing
 2. **Temporal Analysis** - Extract creation timestamps (EXIF DateTimeOriginal → filesystem fallback)
-3. **Spatial Analysis** - Extract GPS coordinates (EXIF GPS → Google Maps History fallback)  
+3. **Spatial Analysis** - Extract GPS coordinates (EXIF GPS → Google Maps History fallback)
 4. **Data Augmentation** - Generate template variables from raw metadata
 
 ### Core Components (planned structure)
+
 - `src/pipeline/` - Declarative pipeline engine and ruleset processing
 - `src/metadata/` - EXIF extraction, parsing, reverse geocoding, temporal/spatial analysis
 - `src/actions/` - Built-in actions (move, copy, symlink, hardlink) and custom command invocation
@@ -53,13 +58,17 @@ The system follows a declarative pipeline model with these core components:
 ## Key Concepts
 
 ### Rulesets
+
 Pipeline stages that process media files. Each ruleset has:
+
 - **name**: Unique identifier
 - **input**: Source specification (`cmdline`, `path:`, `watch:`, `ruleset:`)
 - **rules**: Ordered list of condition/template/action triplets
 
 ### Template Variables
+
 Rich context variables available for path templates and conditions:
+
 - **time**: `{time.yyyy}`, `{time.mm}`, `{time.dd}`, `{time.month_name}`, etc.
 - **space**: `{space.country}`, `{space.city}`, `{space.road}`, etc.
 - **source**: `{source.name}`, `{source.extension}`, `{source.original}`, etc.
@@ -67,6 +76,7 @@ Rich context variables available for path templates and conditions:
 - **special**: `{special.md5_short}`, `{special.count}` (collision handling)
 
 ### Actions
+
 - **Built-in**: move, copy, symlink, hardlink
 - **Custom**: User-defined commands with template variable substitution
 
@@ -75,6 +85,7 @@ Rich context variables available for path templates and conditions:
 The project uses research-based, production-ready dependencies:
 
 ### Core Dependencies
+
 - **nom-exif** - Unified metadata extraction for images and videos with zero-copy parsing
 - **image** - Comprehensive image processing with support for all major formats
 - **figment** - Advanced hierarchical configuration management (YAML, TOML, JSON, env)
@@ -87,6 +98,7 @@ The project uses research-based, production-ready dependencies:
 - **notify** - File system monitoring for daemon mode
 
 ### Optional Tier 2 Dependencies (add as needed)
+
 - **rawloader** - RAW image format support
 - **mp4parse** - Lightweight video metadata extraction
 - **kamadak-exif** - Pure Rust EXIF fallback
@@ -95,18 +107,21 @@ The project uses research-based, production-ready dependencies:
 ## Configuration Format
 
 Uses Figment for flexible configuration management supporting:
+
 - YAML, TOML, JSON formats
 - Environment variable overrides
 - Hierarchical profiles (default, debug, production)
 - Automatic path resolution relative to config files
 
 Configuration sections:
+
 - **actions**: Custom command definitions
 - **rulesets**: Pipeline stage definitions with input sources and processing rules
 
 ## Testing Strategy
 
 Run the full test suite that matches CI behavior:
+
 ```bash
 cargo test --verbose
 ```

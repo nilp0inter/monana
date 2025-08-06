@@ -41,7 +41,7 @@ Before any organizational rules can be applied, the system must first build a co
 #table(
   columns: (15%, 25%, 35%, 25%),
   [*Category*], [*Variable*], [*Description*], [*Example*],
-  
+
   [time], [{time.yyyy}], [4-digit year], [2025],
   [], [{time.yy}], [2-digit year], [25],
   [], [{time.mm}], [2-digit month (01-12)], [07],
@@ -61,7 +61,11 @@ Before any organizational rules can be applied, the system must first build a co
   [], [{space.county}], [County or district], [Madrid],
   [], [{space.road}], [Street name], [Calle de Atocha],
 
-  [source], [{source.path}], [Original file path], [/home/nil/import/IMG_1234.JPG],
+  [source],
+  [{source.path}],
+  [Original file path],
+  [/home/nil/import/IMG_1234.JPG],
+
   [], [{source.name}], [Filename without extension], [IMG_1234],
   [], [{source.extension}], [Lowercase extension], [jpg],
   [], [{source.original}], [Full original filename], [IMG_1234.JPG],
@@ -75,7 +79,7 @@ Before any organizational rules can be applied, the system must first build a co
   [], [{media.duration}], [Duration (sec)], [183.5],
 
   [special], [{special.md5_short}], [First 8 of MD5], [a1b2c3d4],
-  [], [{special.count}], [Filename collision suffix], [\_1]
+  [], [{special.count}], [Filename collision suffix], [\_1],
 )
 
 == 5. The Ruleset Engine
@@ -84,10 +88,10 @@ This system's core logic is defined with *rulesets*, which are pipeline stages. 
 
 1. *name*: A unique identifier (e.g., `"Archive"`)
 2. *input*: Defines the source of media files to process:
-   - `cmdline`: Accepts CLI arguments.
-   - `path: /path/to/dir`: Scans files at path.
-   - `watch: /path/to/dir`: Monitors a dir daemon-style.
-   - `ruleset: <name>`: Takes output from another ruleset.
+  - `cmdline`: Accepts CLI arguments.
+  - `path: /path/to/dir`: Scans files at path.
+  - `watch: /path/to/dir`: Monitors a dir daemon-style.
+  - `ruleset: <name>`: Takes output from another ruleset.
 3. *rules*: List of rule objects. For each file, rules are tested in order. The first matching rule executes and ends evaluation.
 
 == 6. Rule and Action Definitions

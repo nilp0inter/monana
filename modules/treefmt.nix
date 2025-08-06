@@ -19,6 +19,8 @@
 
           # Nix code formatting
           nixfmt.enable = true;
+
+          typstyle.enable = true;
         };
 
         settings.global.excludes = [

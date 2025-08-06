@@ -1,7 +1,8 @@
-# 🌸 MONANA  
-Media Organization, Normalization, and Archival via Named Automation  
+# 🌸 MONANA
 
-> “I’m not just organizing your files — I’m preserving your life’s moments.” – Monana 💁‍♀️  
+Media Organization, Normalization, and Archival via Named Automation
+
+> “I’m not just organizing your files — I’m preserving your life’s moments.” – Monana 💁‍♀️
 
 ---
 
@@ -76,7 +77,8 @@ Here’s a basic declarative pipeline — YAML format:
 # Custom action to create low-res images
 actions:
   create-low-res:
-    command: ["magick", "{source.path}", "-resize", "1920x1080>", "{target.path}"]
+    command:
+      ["magick", "{source.path}", "-resize", "1920x1080>", "{target.path}"]
 
 rulesets:
   Master-Archive:
@@ -108,13 +110,13 @@ rulesets:
 
 These context variables are available to all templates and conditions:
 
-| Category | Variable | Description | Example |
-|---------|----------|-------------|---------|
-| time | {time.yyyy} | 4-digit year | 2024 |
-| space | {space.city} | City location | Madrid |
-| source | {source.name} | Filename base | IMG_0001 |
-| media | {media.type} | Type of file | image |
-| special | {special.md5_short} | Unique hash short | a1b2c3d4 |
+| Category | Variable            | Description       | Example  |
+| -------- | ------------------- | ----------------- | -------- |
+| time     | {time.yyyy}         | 4-digit year      | 2024     |
+| space    | {space.city}        | City location     | Madrid   |
+| source   | {source.name}       | Filename base     | IMG_0001 |
+| media    | {media.type}        | Type of file      | image    |
+| special  | {special.md5_short} | Unique hash short | a1b2c3d4 |
 
 Full reference available in the Wiki.
 
