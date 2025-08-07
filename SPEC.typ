@@ -35,6 +35,7 @@ Before any organizational rules can be applied, the system must first build a co
   - *Temporal*: Derive year, month, weekday, etc.
   - *Spatial*: Reverse-geocode coordinates.
   - *Technical*: Extract dimensions, duration, MIME type, etc.
+  - *EXIF Metadata*: Expose ALL EXIF tags with proper types (numbers remain numeric).
 
 == 4. Data Context & Template Variables
 
@@ -50,16 +51,21 @@ Before any organizational rules can be applied, the system must first build a co
   [], [{time.month_short}], [3-letter month abbreviation], [Jul],
   [], [{time.day_name}], [Day of the week], [Friday],
   [], [{time.day_short}], [Abbrev. day], [Fri],
-  [], [{time.HH}], [Hour (00-23)], [21],
-  [], [{time.MM}], [Minutes (00-59)], [30],
-  [], [{time.SS}], [Seconds (00-59)], [05],
+  [], [{time.hh}], [Hour (00-23)], [21],
+  [], [{time.min}], [Minutes (00-59)], [30],
+  [], [{time.ss}], [Seconds (00-59)], [05],
+  [], [{time.weekday}], [Day of week], [Monday],
+  [], [{time.timestamp}], [Unix timestamp], [1719590400],
 
   [space], [{space.country}], [Country name], [Spain],
   [], [{space.country_code}], [2-letter country code], [ES],
   [], [{space.state}], [State/Province/Region], [Community of Madrid],
   [], [{space.city}], [City or town], [Madrid],
-  [], [{space.county}], [County or district], [Madrid],
+  [], [{space.district}], [District], [Centro],
   [], [{space.road}], [Street name], [Calle de Atocha],
+  [], [{space.lat}], [Latitude], [40.4168],
+  [], [{space.lon}], [Longitude], [-3.7038],
+  [], [{space.altitude}], [Altitude (meters)], [650],
 
   [source],
   [{source.path}],
@@ -69,14 +75,23 @@ Before any organizational rules can be applied, the system must first build a co
   [], [{source.name}], [Filename without extension], [IMG_1234],
   [], [{source.extension}], [Lowercase extension], [jpg],
   [], [{source.original}], [Full original filename], [IMG_1234.JPG],
+  [], [{source.size}], [File size (bytes)], [4194304],
 
-  [media], [{media.type}], [Media type], [image],
-  [], [{media.mimetype}], [MIME type], [image/jpeg],
-  [], [{media.size}], [File size (bytes)], [4194304],
-  [], [{media.width}], [Width in pixels], [4000],
-  [], [{media.height}], [Height in pixels], [3000],
-  [], [{media.resolution}], [`WxH` resolution], [4000x3000],
-  [], [{media.duration}], [Duration (sec)], [183.5],
+  [type], [type], [Media type (condition)], [image],
+  
+  [meta], [{meta.Make}], [Camera manufacturer], [Canon],
+  [], [{meta.Model}], [Camera model], [EOS 5D Mark IV],
+  [], [{meta.FNumber}], [Aperture (numeric)], [2.8],
+  [], [{meta.ISO}], [ISO speed (numeric)], [1600],
+  [], [{meta.FocalLength}], [Focal length (numeric)], [85],
+  [], [{meta.ExposureTime}], [Exposure time], [1/125],
+  [], [{meta.LensModel}], [Lens model], [EF 85mm f/1.8],
+  [], [{meta.ImageWidth}], [Width (numeric)], [4000],
+  [], [{meta.ImageHeight}], [Height (numeric)], [3000],
+  [], [{meta.Orientation}], [Orientation (numeric)], [1],
+  [], [{meta.DateTimeOriginal}], [Original date/time], [2024:07:18 21:30:05],
+  [], [{meta.duration}], [Video duration (numeric)], [183.5],
+  [], [{meta.*}], [Any EXIF tag by name], [(varies)],
 
   [special], [{special.md5_short}], [First 8 of MD5], [a1b2c3d4],
   [], [{special.count}], [Filename collision suffix], [\_1],
@@ -97,7 +112,7 @@ This system's core logic is defined with *rulesets*, which are pipeline stages. 
 == 6. Rule and Action Definitions
 
 A rule is:
-- *condition*: Optional boolean test (e.g., `media.type == "video"`). Use `default` to always match.
+- *condition*: Boolean expression using dot notation (e.g., `type == "video"`, `meta.FNumber <= 2.8`, `space.country == "ES"`). Use `true` to always match.
 - *template*: Defines output path using variables.
 - *action*: Either built-in or custom.
 
@@ -107,7 +122,36 @@ A rule is:
 === Custom Actions
 Commands that use template variables. Custom actions may access `{target.path}` for resolved output.
 
-== 7. Example Configuration
+=== Condition Expressions
+Conditions use Rhai expression syntax with dot notation for accessing nested values:
+- Media type: `type == "image"` or `type == "video"`
+- Location: `space.city == "Madrid"`, `space.country == "ES"`
+- Time: `time.yyyy == "2024"`, `time.weekday == "Saturday"`
+- EXIF metadata: `meta.Make == "Canon"`, `meta.ISO >= 3200`, `meta.FNumber <= 2.8`
+- Complex: `type == "image" && meta.Make != () && space.lat != 0`
+
+Note: Missing EXIF tags return empty values (safe to reference). Numeric EXIF values maintain their types for proper comparisons.
+
+== 7. Command Line Interface
+
+The system provides a straightforward CLI for processing media files:
+
+```bash
+monana --config <CONFIG_FILE> --input-cmdline <PATH> [OPTIONS]
+```
+
+=== Required Arguments
+- `--config` / `-c`: Path to YAML configuration file
+- `--input-cmdline`: Path to media files (file or directory)
+
+=== Options
+- `--dry-run` / `-d`: Preview actions without executing
+- `--verbose` / `-v`: Show detailed processing information  
+- `--recursive` / `-R`: Process directories recursively
+
+When invoked, the system processes ALL rulesets with `input: cmdline` against the specified path.
+
+== 8. Example Configuration
 
 ```yaml
 # CUSTOM ACTIONS
@@ -121,15 +165,20 @@ rulesets:
   Master-Archive:
     input: cmdline
     rules:
-      - condition: 'media.type == "video"'
+      - condition: 'type == "video"'
         action: move
         template: "/mnt/media/Videos/{time.yyyy}/{time.yyyy}-{time.mm}-{time.dd}/{source.original}"
 
-      - condition: 'media.type == "image" && space.city == "Madrid"'
+      - condition: 'type == "image" && space.city == "Madrid"'
         action: move
         template: "/mnt/media/Photos/Home/{time.yyyy}/{time.mm}/{source.original}"
+      
+      # Professional photos - high resolution Canon cameras
+      - condition: 'type == "image" && meta.Make == "Canon" && meta.ImageWidth >= 3840'
+        action: move
+        template: "/mnt/media/Photos/Professional/{time.yyyy}/{meta.Model}/{source.original}"
 
-      - condition: 'media.type == "image"'
+      - condition: 'type == "image"'
         action: move
         template: "/mnt/media/Photos/Travel/{space.country}/{space.city}/{time.yyyy}-{time.mm}/{source.original}"
 
@@ -137,7 +186,7 @@ rulesets:
   Web-Gallery-Generator:
     input: "ruleset:Master-Archive"
     rules:
-      - condition: 'media.type == "image"'
+      - condition: 'type == "image"'
         action: create-low-res-jpeg
         template: "/var/www/gallery/img/{time.yyyy}/{source.name}.jpg"
 

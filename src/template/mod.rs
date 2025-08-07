@@ -1,7 +1,7 @@
 use anyhow::Result;
 use camino::Utf8PathBuf;
 use regex::Regex;
-use std::collections::HashMap;
+use rhai::Dynamic;
 
 use crate::metadata::MediaContext;
 
@@ -10,60 +10,71 @@ lazy_static::lazy_static! {
 }
 
 pub fn apply_template(template: &str, context: &MediaContext) -> Result<Utf8PathBuf> {
-    let variables = build_variable_map(context);
-
     let result = TEMPLATE_VAR.replace_all(template, |caps: &regex::Captures| {
         let var_name = &caps[1];
-        variables
-            .get(var_name)
-            .cloned()
-            .unwrap_or_else(|| format!("{{unknown:{var_name}}}"))
+        resolve_variable(var_name, context).unwrap_or_else(|| format!("{{unknown:{var_name}}}"))
     });
 
     Ok(Utf8PathBuf::from(result.to_string()))
 }
 
-fn build_variable_map(context: &MediaContext) -> HashMap<&'static str, String> {
-    let mut vars = HashMap::new();
+fn resolve_variable(var_name: &str, context: &MediaContext) -> Option<String> {
+    let parts: Vec<&str> = var_name.split('.').collect();
 
-    // Time variables
-    vars.insert("time.yyyy", context.time.yyyy.clone());
-    vars.insert("time.mm", context.time.mm.clone());
-    vars.insert("time.dd", context.time.dd.clone());
-    vars.insert("time.hh", context.time.hh.clone());
-    vars.insert("time.min", context.time.min.clone());
-    vars.insert("time.ss", context.time.ss.clone());
-    vars.insert("time.month_name", context.time.month_name.clone());
-    vars.insert("time.weekday", context.time.weekday.clone());
-
-    // Space variables
-    vars.insert("space.country", context.space.country.clone());
-    vars.insert("space.country_code", context.space.country_code.clone());
-    vars.insert("space.state", context.space.state.clone());
-    vars.insert("space.city", context.space.city.clone());
-    vars.insert("space.district", context.space.district.clone());
-    vars.insert("space.road", context.space.road.clone());
-    vars.insert("space.lat", context.space.lat.to_string());
-    vars.insert("space.lon", context.space.lon.to_string());
-
-    // Source variables
-    vars.insert("source.path", context.source.path.clone());
-    vars.insert("source.name", context.source.name.clone());
-    vars.insert("source.extension", context.source.extension.clone());
-    vars.insert("source.original", context.source.original.clone());
-    vars.insert("source.size", context.source.size.to_string());
-
-    // Media variables
-    vars.insert("media.type", context.media.r#type.clone());
-    vars.insert("media.width", context.media.width.to_string());
-    vars.insert("media.height", context.media.height.to_string());
-
-    if let Some(make) = &context.media.camera_make {
-        vars.insert("media.camera_make", make.clone());
+    match parts.as_slice() {
+        ["time", field] => match *field {
+            "yyyy" => Some(context.time.yyyy.clone()),
+            "mm" => Some(context.time.mm.clone()),
+            "dd" => Some(context.time.dd.clone()),
+            "hh" => Some(context.time.hh.clone()),
+            "min" => Some(context.time.min.clone()),
+            "ss" => Some(context.time.ss.clone()),
+            "month_name" => Some(context.time.month_name.clone()),
+            "weekday" => Some(context.time.weekday.clone()),
+            _ => None,
+        },
+        ["space", field] => match *field {
+            "country" => Some(context.space.country.clone()),
+            "country_code" => Some(context.space.country_code.clone()),
+            "state" => Some(context.space.state.clone()),
+            "city" => Some(context.space.city.clone()),
+            "district" => Some(context.space.district.clone()),
+            "road" => Some(context.space.road.clone()),
+            "lat" => Some(context.space.lat.to_string()),
+            "lon" => Some(context.space.lon.to_string()),
+            _ => None,
+        },
+        ["source", field] => match *field {
+            "path" => Some(context.source.path.clone()),
+            "name" => Some(context.source.name.clone()),
+            "extension" => Some(context.source.extension.clone()),
+            "original" => Some(context.source.original.clone()),
+            "size" => Some(context.source.size.to_string()),
+            _ => None,
+        },
+        ["type"] => Some(context.r#type.clone()),
+        ["meta", tag] => context.meta.get(*tag).map(dynamic_to_string),
+        _ => None,
     }
-    if let Some(model) = &context.media.camera_model {
-        vars.insert("media.camera_model", model.clone());
-    }
+}
 
-    vars
+fn dynamic_to_string(value: &Dynamic) -> String {
+    if value.is_string() {
+        value.clone().into_string().unwrap_or_default()
+    } else if value.is_int() {
+        value.as_int().unwrap_or(0).to_string()
+    } else if value.is_float() {
+        let f = value.as_float().unwrap_or(0.0);
+        // Format floats nicely, removing unnecessary decimals
+        if f.fract() == 0.0 {
+            format!("{f:.0}")
+        } else {
+            f.to_string()
+        }
+    } else if value.is_bool() {
+        value.as_bool().unwrap_or(false).to_string()
+    } else {
+        // Fallback for other types
+        value.to_string()
+    }
 }

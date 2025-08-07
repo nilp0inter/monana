@@ -1,0 +1,129 @@
+# Test configuration for MONANA with EXIF metadata exposure
+# This config demonstrates various features including EXIF checks,
+# reverse geolocation, and template usage
+
+# Custom action definitions
+actions:
+  # Simple echo command to test custom actions
+  echo_metadata:
+    cmd: "echo 'Processing {source.original} - Camera: {meta.Make} {meta.Model}, Location: {space.city}, {space.country}'"
+
+# Rulesets for testing
+rulesets:
+  # Test EXIF metadata access and numeric comparisons
+  - name: exif_test
+    input: cmdline
+    rules:
+      # High-resolution professional photos (4K+)
+      - condition: 'type == "image" && meta.ImageWidth >= 3840 && meta.Make != ()'
+        template: "output/professional/4k/{meta.Make}/{time.yyyy}-{time.mm}/{source.name}.{source.extension}"
+        action: copy
+
+      # Photos with fast aperture (f/2.8 or faster)
+      - condition: 'type == "image" && meta.FNumber <= 2.8'
+        template: "output/fast_lens/{time.yyyy}/{meta.FNumber}/{source.name}.{source.extension}"
+        action: copy
+
+      # Default for any image with EXIF data
+      - condition: 'type == "image" && meta.Make != ()'
+        template: "output/with_exif/{time.yyyy}/{source.name}.{source.extension}"
+        action: copy
+
+  # Test reverse geolocation features
+  - name: location_test
+    input: cmdline
+    rules:
+      # Photos from specific countries
+      - condition: 'type == "image" && (space.country == "ES" || space.country == "FR" || space.country == "IT")'
+        template: "output/europe/{space.country}/{space.city}/{time.yyyy}-{time.mm}-{time.dd}_{source.name}.{source.extension}"
+        action: copy
+
+      # Photos with GPS coordinates but outside major cities
+      - condition: 'type == "image" && space.lat != 0 && space.city == "unknown"'
+        template: "output/remote_locations/{space.lat}_{space.lon}/{source.name}.{source.extension}"
+        action: copy
+
+      # Any photo with valid GPS data
+      - condition: 'type == "image" && space.lat != 0 && space.lon != 0'
+        template: "output/geotagged/{space.country}/{space.state}/{space.city}/{source.name}.{source.extension}"
+        action: symlink
+
+  # Test various EXIF tags and metadata
+  - name: camera_settings
+    input: cmdline
+    rules:
+      # High ISO photos (3200+)
+      - condition: 'type == "image" && meta.ISOSpeedRatings >= 3200'
+        template: "output/high_iso/ISO{meta.ISOSpeedRatings}/{time.yyyy}-{time.mm}/{source.name}.{source.extension}"
+        action: copy
+
+      # Specific camera models
+      - condition: 'type == "image" && (meta.Model == "Canon EOS 5D Mark IV" || meta.Model == "NIKON D850")'
+        template: "output/pro_cameras/{meta.Make}_{meta.Model}/{time.yyyy}/{source.name}.{source.extension}"
+        action: copy
+
+      # Portrait orientation photos
+      - condition: 'type == "image" && (meta.Orientation == 6 || meta.Orientation == 8)'
+        template: "output/portrait/{time.yyyy}-{time.mm}/{source.name}.{source.extension}"
+        action: copy
+
+  # Test lens information and focal length
+  - name: lens_analysis
+    input: cmdline
+    rules:
+      # Wide angle shots (< 35mm)
+      - condition: 'type == "image" && meta.FocalLength < 35'
+        template: "output/wide_angle/{meta.FocalLength}mm/{source.name}.{source.extension}"
+        action: copy
+
+      # Telephoto shots (> 200mm)
+      - condition: 'type == "image" && meta.FocalLength > 200'
+        template: "output/telephoto/{meta.FocalLength}mm/{time.yyyy}/{source.name}.{source.extension}"
+        action: copy
+
+      # Photos with lens information
+      - condition: 'type == "image" && meta.LensModel != ()'
+        template: "output/by_lens/{meta.LensModel}/{source.name}.{source.extension}"
+        action: symlink
+
+  # Test time-based organization with EXIF dates
+  - name: time_based
+    input: cmdline
+    rules:
+      # Weekend photos (Saturday or Sunday)
+      - condition: 'type == "image" && (time.weekday == "Saturday" || time.weekday == "Sunday")'
+        template: "output/weekends/{time.yyyy}/{time.month_name}/{time.dd}_{time.weekday}/{source.name}.{source.extension}"
+        action: copy
+
+      # Summer photos (June-August) with location
+      - condition: 'type == "image" && (time.mm == "06" || time.mm == "07" || time.mm == "08") && space.city != "unknown"'
+        template: "output/summer/{time.yyyy}/{space.country}/{space.city}/{source.name}.{source.extension}"
+        action: copy
+
+      # Photos taken in the morning (before 10 AM)
+      - condition: 'type == "image" && meta.DateTimeOriginal != () && time.hh < "10"'
+        template: "output/morning/{time.yyyy}-{time.mm}/{time.hh}h/{source.name}.{source.extension}"
+        action: copy
+
+  # Test custom action with metadata
+  - name: metadata_echo
+    input: cmdline
+    rules:
+      # Echo metadata for photos with complete EXIF
+      - condition: 'type == "image" && meta.Make != () && space.city != "unknown"'
+        template: "output/processed/{source.name}.{source.extension}"
+        action: "cmd:echo_metadata"
+
+  # Test video handling (even though it won't have much EXIF)
+  - name: video_test
+    input: cmdline
+    rules:
+      # Videos with duration metadata
+      - condition: 'type == "video" && meta.duration > 60'
+        template: "output/videos/long/{time.yyyy}/{source.name}.{source.extension}"
+        action: copy
+
+      # All other videos
+      - condition: 'type == "video"'
+        template: "output/videos/general/{time.yyyy}-{time.mm}/{source.name}.{source.extension}"
+        action: copy

@@ -7,24 +7,20 @@ use walkdir::WalkDir;
 use monana::{
     actions::Action,
     metadata::extractor::extract_metadata,
-    pipeline::{Pipeline, RuleEngine},
+    pipeline::{Pipeline, RuleEngine, Ruleset},
 };
 
 #[derive(Parser)]
 #[command(name = "monana")]
 #[command(about = "MONANA - Media Organization, Normalization, and Archival via Named Automation")]
 struct Args {
-    /// Paths to process (files or directories)
-    #[arg(value_name = "PATH")]
-    paths: Vec<Utf8PathBuf>,
+    /// Run all cmdline rulesets with the given path
+    #[arg(long = "input-cmdline", value_name = "PATH")]
+    input_cmdline: Utf8PathBuf,
 
     /// Configuration file
     #[arg(short, long, default_value = "monana.yaml")]
     config: String,
-
-    /// Ruleset to use
-    #[arg(short, long, default_value = "organize_photos")]
-    ruleset: String,
 
     /// Process directories recursively
     #[arg(short = 'R', long)]
@@ -51,36 +47,34 @@ fn main() -> Result<()> {
     let pipeline: Pipeline =
         serde_yaml::from_str(&config_content).with_context(|| "Failed to parse configuration")?;
 
-    // Find the specified ruleset
-    let ruleset = pipeline
+    // Find all cmdline rulesets
+    let cmdline_rulesets: Vec<_> = pipeline
         .rulesets
         .iter()
-        .find(|r| r.name == args.ruleset && matches!(r.input, monana::pipeline::InputSpec::Cmdline))
-        .ok_or_else(|| anyhow::anyhow!("Ruleset '{}' not found", args.ruleset))?;
+        .filter(|r| matches!(r.input, monana::pipeline::InputSpec::Cmdline))
+        .collect();
 
-    println!("📋 Using ruleset: {}", ruleset.name);
+    if cmdline_rulesets.is_empty() {
+        println!("⚠️  No cmdline rulesets found in configuration");
+        return Ok(());
+    }
+
+    println!("📋 Found {} cmdline ruleset(s):", cmdline_rulesets.len());
+    for ruleset in &cmdline_rulesets {
+        println!("   - {}", ruleset.name);
+    }
 
     // Create rule engine
     let engine = RuleEngine::new()?;
 
-    // If no paths specified, use current directory
-    let paths = if args.paths.is_empty() {
-        vec![Utf8PathBuf::from(".")]
-    } else {
-        args.paths
-    };
+    // Check if input path exists
+    if !args.input_cmdline.exists() {
+        eprintln!("⚠️  Path does not exist: {}", args.input_cmdline);
+        return Ok(());
+    }
 
     // Collect all files to process
-    let mut all_files = Vec::new();
-    for path in &paths {
-        if !path.exists() {
-            eprintln!("⚠️  Path does not exist: {path}");
-            continue;
-        }
-
-        let files = collect_files(path, args.recursive)?;
-        all_files.extend(files);
-    }
+    let all_files = collect_files(&args.input_cmdline, args.recursive)?;
 
     if all_files.is_empty() {
         println!("⚠️  No media files found");
@@ -90,51 +84,51 @@ fn main() -> Result<()> {
     println!("📁 Found {} file(s) to process", all_files.len());
 
     if args.dry_run {
-        println!("🔍 DRY RUN MODE - No files will be moved");
+        println!("🔍 DRY RUN MODE - No files will be moved\n");
     }
 
-    // Process each file
-    let mut processed = 0;
-    let mut matched = 0;
-    let mut errors = 0;
-    let mut unmatched_files = Vec::new();
+    // Process each ruleset
+    for ruleset in &cmdline_rulesets {
+        println!("🔧 Processing ruleset: {}", ruleset.name);
+        println!("   Rules: {}", ruleset.rules.len());
 
-    for file_path in all_files {
-        match process_file(
-            &file_path,
-            &ruleset.rules,
-            &engine,
-            args.dry_run,
-            args.verbose,
-        ) {
-            Ok(rule_matched) => {
-                processed += 1;
-                if rule_matched {
-                    matched += 1;
-                } else {
-                    unmatched_files.push(file_path.clone());
+        let mut processed = 0;
+        let mut matched = 0;
+        let mut errors = 0;
+        let mut no_match_files = Vec::new();
+
+        for file_path in &all_files {
+            processed += 1;
+
+            if args.verbose {
+                println!("\n🔄 Processing: {file_path}");
+            }
+
+            match process_file(file_path, ruleset, &engine, args.dry_run, args.verbose) {
+                Ok(true) => matched += 1,
+                Ok(false) => no_match_files.push(file_path.clone()),
+                Err(e) => {
+                    eprintln!("❌ Error processing {file_path}: {e}");
+                    errors += 1;
                 }
             }
-            Err(e) => {
-                errors += 1;
-                eprintln!("❌ Error processing {file_path}: {e}");
+        }
+
+        // Show summary for this ruleset
+        println!("\n📊 Ruleset '{}' summary:", ruleset.name);
+        println!("   Files processed: {processed}");
+        println!("   Rules matched: {matched}");
+        println!("   No rules matched: {}", no_match_files.len());
+        println!("   Errors: {errors}");
+
+        if args.verbose && !no_match_files.is_empty() {
+            println!("   Files with no matching rules:");
+            for file in &no_match_files {
+                println!("     - {file}");
             }
         }
+        println!();
     }
-
-    // Log unmatched files
-    if !unmatched_files.is_empty() {
-        println!("\n⚠️  Files with no matching rules:");
-        for file in &unmatched_files {
-            println!("   - {file}");
-        }
-    }
-
-    println!("\n🎉 Summary:");
-    println!("   Files processed: {processed}");
-    println!("   Rules matched: {matched}");
-    println!("   No rules matched: {}", processed - matched);
-    println!("   Errors: {errors}");
 
     Ok(())
 }
@@ -180,65 +174,56 @@ fn is_media_file(path: &Utf8Path) -> Result<bool> {
 
 fn process_file(
     file_path: &Utf8PathBuf,
-    rules: &[monana::pipeline::Rule],
+    ruleset: &Ruleset,
     engine: &RuleEngine,
     dry_run: bool,
     verbose: bool,
 ) -> Result<bool> {
-    if verbose {
-        println!("\n📄 Processing: {file_path}");
-    }
-
     // Extract metadata
     let context = extract_metadata(file_path)?;
 
-    // Test each rule
-    for (i, rule) in rules.iter().enumerate() {
-        match engine.process_rule(rule, &context) {
-            Ok(Some((destination, action_spec))) => {
-                // Rule matched!
-                if verbose || !dry_run {
-                    println!("✅ {file_path} -> {destination}");
-                    println!("   Rule {}: {}", i + 1, rule.condition);
-                    println!("   Action: {action_spec:?}");
+    if verbose {
+        println!("  📊 Type: {}", context.r#type);
+        if !context.meta.is_empty() {
+            println!("  📷 EXIF tags found: {}", context.meta.len());
+        }
+    }
+
+    // Process rules in order
+    for rule in &ruleset.rules {
+        match engine.process_rule(rule, &context)? {
+            Some((destination, action)) => {
+                if verbose {
+                    println!("  ✅ Rule matched: {}", rule.condition);
+                    println!("  📁 Destination: {destination}");
+                    println!("  🎯 Action: {action:?}");
                 }
 
                 if !dry_run {
-                    // Execute the action
-                    let action = match &action_spec {
+                    // Convert ActionSpec to Action and execute
+                    let action_enum = match &action {
                         monana::pipeline::ActionSpec::Move => Action::Move,
                         monana::pipeline::ActionSpec::Copy => Action::Copy,
                         monana::pipeline::ActionSpec::Symlink => Action::Symlink,
                         monana::pipeline::ActionSpec::Hardlink => Action::Hardlink,
                         monana::pipeline::ActionSpec::Command(cmd) => {
-                            if let Some((_, cmd_name)) = cmd.split_once(':') {
-                                // TODO: Look up custom command from config
-                                eprintln!("⚠️  Custom commands not yet implemented: {cmd_name}");
-                                return Ok(true);
-                            } else {
-                                anyhow::bail!("Invalid command spec: {}", cmd);
-                            }
+                            // For now, just print custom commands
+                            println!("  🔧 Would run custom command: {cmd}");
+                            return Ok(true);
                         }
                     };
 
-                    // Create destination directory if needed
                     let dest_path = Utf8PathBuf::from(&destination);
-                    if let Some(parent) = dest_path.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-
-                    // Execute the action
-                    action.execute(file_path, &dest_path)?;
+                    action_enum.execute(file_path, &dest_path)?;
+                } else if !verbose {
+                    println!("  {file_path} -> {destination}");
                 }
 
-                return Ok(true); // First matching rule wins
+                return Ok(true);
             }
-            Ok(None) => {
-                // Rule didn't match, continue to next
-            }
-            Err(e) => {
+            None => {
                 if verbose {
-                    eprintln!("⚠️  Rule {} error: {}", i + 1, e);
+                    println!("  ❌ Rule not matched: {}", rule.condition);
                 }
             }
         }

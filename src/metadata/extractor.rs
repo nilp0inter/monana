@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use camino::Utf8Path;
 use chrono::{DateTime, Utc};
 use nom_exif::{ExifIter, ExifTag, MediaParser, MediaSource};
+use rhai::Dynamic;
 use std::fs;
 
 use super::context::{MediaContext, SourceContext, TimeContext};
@@ -14,29 +15,15 @@ pub fn extract_metadata(path: &Utf8Path) -> Result<MediaContext> {
     };
 
     // Detect media type
-    context.media.r#type = detect_media_type(path);
+    context.r#type = detect_media_type(path);
 
     // Try EXIF extraction first
     match extract_exif_metadata(path) {
         Ok(exif_context) => {
-            // Use EXIF data directly instead of merging
+            // Use EXIF data directly
             context.time = exif_context.time;
             context.space = exif_context.space;
-            if exif_context.media.width > 0 {
-                context.media.width = exif_context.media.width;
-            }
-            if exif_context.media.height > 0 {
-                context.media.height = exif_context.media.height;
-            }
-            if exif_context.media.camera_make.is_some() {
-                context.media.camera_make = exif_context.media.camera_make;
-            }
-            if exif_context.media.camera_model.is_some() {
-                context.media.camera_model = exif_context.media.camera_model;
-            }
-            if exif_context.media.orientation.is_some() {
-                context.media.orientation = exif_context.media.orientation;
-            }
+            context.meta = exif_context.meta;
         }
         Err(_) => {
             // EXIF extraction failed completely, fallbacks will handle it
@@ -109,88 +96,92 @@ fn extract_exif_metadata(path: &Utf8Path) -> Result<MediaContext> {
         }
     }
 
-    // Second pass: Parse again for other EXIF data
+    // Second pass: Parse again for all EXIF data
     let ms = MediaSource::file_path(path.as_std_path())?;
     let iter = parser.parse::<_, _, ExifIter>(ms)?;
 
     for mut entry in iter.into_iter() {
         if let Ok(value) = entry.take_result() {
-            if let Some(tag) = entry.tag() {
-                match tag {
-                    ExifTag::DateTimeOriginal | ExifTag::CreateDate => {
-                        // Found date tag
-                        // Try as string first
-                        if let Some(datetime_str) = value.as_str() {
-                            if let Ok(dt) = parse_exif_datetime(datetime_str) {
-                                context.time = create_time_context(dt);
-                                // Parsed EXIF date from string
-                            }
-                        } else {
-                            // Try to parse from debug representation
-                            let debug_str = format!("{value:?}");
+            // Get tag name - use debug format of tag if no specific tag
+            let tag_name = if let Some(tag) = entry.tag() {
+                format!("{tag:?}")
+            } else {
+                // Use tag code if no enum variant
+                format!("Tag_{}", entry.tag_code())
+            };
 
-                            // Handle Time(YYYY-MM-DDTHH:MM:SS+TZ:TZ) format
-                            if debug_str.starts_with("Time(") && debug_str.ends_with(")") {
-                                if let Some(dt_str) = debug_str
-                                    .strip_prefix("Time(")
-                                    .and_then(|s| s.strip_suffix(")"))
-                                {
-                                    if let Ok(dt) = DateTime::parse_from_rfc3339(dt_str) {
-                                        context.time = create_time_context(dt.with_timezone(&Utc));
-                                        // Parsed EXIF date from Time
-                                    }
-                                }
-                            }
-                            // Handle NaiveDateTime format
-                            else if debug_str.starts_with("NaiveDateTime(")
-                                && debug_str.ends_with(")")
+            // Convert value to Dynamic based on its type using available methods
+            let dynamic_value = if let Some(v) = value.as_u32() {
+                Dynamic::from(v as i64)
+            } else if let Some(v) = value.as_i32() {
+                Dynamic::from(v as i64)
+            } else if let Some(v) = value.as_u16() {
+                Dynamic::from(v as i64)
+            } else if let Some(v) = value.as_i16() {
+                Dynamic::from(v as i64)
+            } else if let Some(v) = value.as_u8() {
+                Dynamic::from(v as i64)
+            } else if let Some(v) = value.as_i8() {
+                Dynamic::from(v as i64)
+            } else if let Some(rational) = value.as_urational() {
+                Dynamic::from(rational.0 as f64 / rational.1 as f64)
+            } else if let Some(rational) = value.as_irational() {
+                Dynamic::from(rational.0 as f64 / rational.1 as f64)
+            } else if let Some(s) = value.as_str() {
+                Dynamic::from(s.to_string())
+            } else {
+                // For other types (Time, NaiveDateTime, etc.), store as string
+                Dynamic::from(format!("{value:?}"))
+            };
+
+            // Store in meta HashMap
+            context.meta.insert(tag_name.clone(), dynamic_value);
+
+            // Special handling for specific tags that affect other fields
+            match entry.tag() {
+                Some(ExifTag::DateTimeOriginal) | Some(ExifTag::CreateDate) => {
+                    // Try as string first
+                    if let Some(datetime_str) = value.as_str() {
+                        if let Ok(dt) = parse_exif_datetime(datetime_str) {
+                            context.time = create_time_context(dt);
+                        }
+                    } else {
+                        // Try to parse from debug representation
+                        let debug_str = format!("{value:?}");
+
+                        // Handle Time(YYYY-MM-DDTHH:MM:SS+TZ:TZ) format
+                        if debug_str.starts_with("Time(") && debug_str.ends_with(")") {
+                            if let Some(dt_str) = debug_str
+                                .strip_prefix("Time(")
+                                .and_then(|s| s.strip_suffix(")"))
                             {
-                                if let Some(dt_str) = debug_str
-                                    .strip_prefix("NaiveDateTime(")
-                                    .and_then(|s| s.strip_suffix(")"))
-                                {
-                                    if let Ok(naive_dt) = chrono::NaiveDateTime::parse_from_str(
-                                        dt_str,
-                                        "%Y-%m-%dT%H:%M:%S",
-                                    ) {
-                                        let dt = DateTime::<Utc>::from_naive_utc_and_offset(
-                                            naive_dt, Utc,
-                                        );
-                                        context.time = create_time_context(dt);
-                                        // Parsed EXIF date from NaiveDateTime
-                                    }
+                                if let Ok(dt) = DateTime::parse_from_rfc3339(dt_str) {
+                                    context.time = create_time_context(dt.with_timezone(&Utc));
+                                }
+                            }
+                        }
+                        // Handle NaiveDateTime format
+                        else if debug_str.starts_with("NaiveDateTime(")
+                            && debug_str.ends_with(")")
+                        {
+                            if let Some(dt_str) = debug_str
+                                .strip_prefix("NaiveDateTime(")
+                                .and_then(|s| s.strip_suffix(")"))
+                            {
+                                if let Ok(naive_dt) = chrono::NaiveDateTime::parse_from_str(
+                                    dt_str,
+                                    "%Y-%m-%dT%H:%M:%S",
+                                ) {
+                                    let dt =
+                                        DateTime::<Utc>::from_naive_utc_and_offset(naive_dt, Utc);
+                                    context.time = create_time_context(dt);
                                 }
                             }
                         }
                     }
-                    ExifTag::ImageWidth | ExifTag::ExifImageWidth => {
-                        if let Some(w) = value.as_u32() {
-                            context.media.width = w;
-                        }
-                    }
-                    ExifTag::ImageHeight | ExifTag::ExifImageHeight => {
-                        if let Some(h) = value.as_u32() {
-                            context.media.height = h;
-                        }
-                    }
-                    ExifTag::Make => {
-                        if let Some(make) = value.as_str() {
-                            context.media.camera_make = Some(make.to_string());
-                        }
-                    }
-                    ExifTag::Model => {
-                        if let Some(model) = value.as_str() {
-                            context.media.camera_model = Some(model.to_string());
-                        }
-                    }
-                    ExifTag::Orientation => {
-                        if let Some(orientation) = value.as_u32() {
-                            context.media.orientation = Some(orientation);
-                        }
-                    }
-                    _ => {
-                        // Other EXIF tags
-                    }
+                }
+                _ => {
+                    // Other tags are already stored in meta
                 }
             }
         }
@@ -240,16 +231,30 @@ fn create_time_context(dt: DateTime<Utc>) -> TimeContext {
 }
 
 fn apply_fallbacks(context: &mut MediaContext, path: &Utf8Path) -> Result<()> {
-    // Use image crate for dimensions if not set
-    if context.media.width == 0 || context.media.height == 0 {
+    // Use image crate for dimensions if not in meta
+    let has_width =
+        context.meta.contains_key("ImageWidth") || context.meta.contains_key("ExifImageWidth");
+    let has_height =
+        context.meta.contains_key("ImageHeight") || context.meta.contains_key("ExifImageHeight");
+
+    if !has_width || !has_height {
         if let Ok(img) = image::open(path.as_std_path()) {
-            context.media.width = img.width();
-            context.media.height = img.height();
+            if !has_width {
+                context
+                    .meta
+                    .insert("ImageWidth".to_string(), Dynamic::from(img.width() as i64));
+            }
+            if !has_height {
+                context.meta.insert(
+                    "ImageHeight".to_string(),
+                    Dynamic::from(img.height() as i64),
+                );
+            }
         }
     }
 
     // Try to extract date from filename for videos
-    if context.time.timestamp.is_none() && context.media.r#type == "video" {
+    if context.time.timestamp.is_none() && context.r#type == "video" {
         if let Some(dt) = extract_date_from_filename(path) {
             context.time = create_time_context(dt);
         }
@@ -264,6 +269,9 @@ fn apply_fallbacks(context: &mut MediaContext, path: &Utf8Path) -> Result<()> {
             }
         }
     }
+
+    // TODO: Add video duration extraction here when mp4parse is added
+    // For now, videos won't have duration metadata
 
     Ok(())
 }

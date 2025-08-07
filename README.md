@@ -17,13 +17,13 @@ Define clear rules. Honor time and place. Archive for life.
 ## 🎯 Key Features
 
 - 🧠 Smart Metadata Extraction  
-  Parses EXIF, file system timestamps, GPS, and even cloud history to build rich temporal & spatial profiles.
+  Parses EXIF, file system timestamps, GPS, and even cloud history to build rich temporal & spatial profiles. Access ANY EXIF tag through templates and conditions.
 
 - 🪄 Declarative Rule Engine  
   Write archival logic using clean rulesets and templated paths — no scripting required (unless you want it).
 
 - ⚙️ Rhai-Powered Extensibility  
-  Customize behavior with lightweight Rhai scripts — safe, embedded, and easy to learn.
+  Customize behavior with lightweight Rhai scripts — safe, embedded, and easy to learn. Full access to metadata with proper types.
 
 - 📸 Canonical Naming + Structure  
   Organize by date, camera, country, or event. Monana enforces consistency across time.
@@ -55,16 +55,16 @@ Install:
 cargo install monana
 ```
 
-Run manually on a folder:
+Run on your media files:
 
 ```bash
-monana run -c ./config/monana.yaml -- /home/nil/import
+monana --config ./monana.yaml --input-cmdline /path/to/media
 ```
 
-Or start a daemon watcher:
+Run with dry-run to preview:
 
 ```bash
-monana run -c ./config/monana.yaml --watch
+monana --config ./monana.yaml --input-cmdline /path/to/media --dry-run
 ```
 
 ---
@@ -84,22 +84,27 @@ rulesets:
   Master-Archive:
     input: cmdline
     rules:
-      - condition: 'media.type == "video"'
+      - condition: 'type == "video"'
         template: "/mnt/archive/Videos/{time.yyyy}/{time.yyyy}-{time.mm}-{source.original}"
         action: move
 
-      - condition: 'media.type == "image" && space.city == "Madrid"'
+      - condition: 'type == "image" && space.city == "Madrid"'
         template: "/mnt/archive/Photos/Home/{time.yyyy}/{time.mm}/{source.original}"
         action: move
 
-      - condition: default
+      # Access any EXIF metadata
+      - condition: 'type == "image" && meta.Make == "Canon" && meta.FNumber <= 2.8'
+        template: "/mnt/archive/Photos/Professional/{time.yyyy}/{source.original}"
+        action: move
+
+      - condition: "true"
         template: "/mnt/archive/Photos/Travel/{space.country}/{space.city}/{time.yyyy}-{time.mm}/{source.original}"
         action: move
 
   Web-Gallery:
     input: "ruleset:Master-Archive"
     rules:
-      - condition: 'media.type == "image"'
+      - condition: 'type == "image"'
         template: "/var/www/images/{time.yyyy}/{source.name}.jpg"
         action: create-low-res
 ```
@@ -110,15 +115,18 @@ rulesets:
 
 These context variables are available to all templates and conditions:
 
-| Category | Variable            | Description       | Example  |
-| -------- | ------------------- | ----------------- | -------- |
-| time     | {time.yyyy}         | 4-digit year      | 2024     |
-| space    | {space.city}        | City location     | Madrid   |
-| source   | {source.name}       | Filename base     | IMG_0001 |
-| media    | {media.type}        | Type of file      | image    |
-| special  | {special.md5_short} | Unique hash short | a1b2c3d4 |
+| Category | Variable            | Description            | Example  |
+| -------- | ------------------- | ---------------------- | -------- |
+| time     | {time.yyyy}         | 4-digit year           | 2024     |
+| space    | {space.city}        | City location          | Madrid   |
+| source   | {source.name}       | Filename base          | IMG_0001 |
+| type     | type                | Media type (condition) | image    |
+| meta     | {meta.Make}         | Camera manufacturer    | Canon    |
+| meta     | {meta.FNumber}      | Aperture (numeric)     | 2.8      |
+| meta     | {meta.\*}           | ANY EXIF tag by name   | (varies) |
+| special  | {special.md5_short} | Unique hash short      | a1b2c3d4 |
 
-Full reference available in the Wiki.
+All EXIF metadata is exposed through the `meta` namespace with proper types (numbers stay numbers for comparisons).
 
 ---
 

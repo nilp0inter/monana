@@ -1,12 +1,15 @@
 use chrono::{DateTime, Utc};
+use rhai::Dynamic;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone)]
 pub struct MediaContext {
     pub time: TimeContext,
     pub space: SpaceContext,
     pub source: SourceContext,
-    pub media: MediaInfo,
+    pub r#type: String,
+    pub meta: HashMap<String, Dynamic>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -42,15 +45,4 @@ pub struct SourceContext {
     pub extension: String,
     pub original: String,
     pub size: u64,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct MediaInfo {
-    pub r#type: String,
-    pub width: u32,
-    pub height: u32,
-    pub duration: Option<f64>,
-    pub camera_make: Option<String>,
-    pub camera_model: Option<String>,
-    pub orientation: Option<u32>,
 }

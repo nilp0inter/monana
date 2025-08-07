@@ -46,13 +46,13 @@ The system follows a declarative pipeline model with these core components:
 3. **Spatial Analysis** - Extract GPS coordinates (EXIF GPS → Google Maps History fallback)
 4. **Data Augmentation** - Generate template variables from raw metadata
 
-### Core Components (planned structure)
+### Core Components
 
-- `src/pipeline/` - Declarative pipeline engine and ruleset processing
-- `src/metadata/` - EXIF extraction, parsing, reverse geocoding, temporal/spatial analysis
+- `src/pipeline/` - Declarative pipeline engine and ruleset processing with Rhai script evaluation
+- `src/metadata/` - EXIF extraction (ALL tags exposed), parsing, reverse geocoding, temporal/spatial analysis
 - `src/actions/` - Built-in actions (move, copy, symlink, hardlink) and custom command invocation
-- `src/config/` - YAML configuration deserialization and validation
-- `rhai/` - Sandboxed scripting hooks for custom conditions
+- `src/template/` - Template variable resolution with dynamic type handling
+- `src/main.rs` - CLI entry point with --input-cmdline flag for batch processing
 - `tests/` - Unit and scenario coverage
 
 ## Key Concepts
@@ -70,9 +70,13 @@ Pipeline stages that process media files. Each ruleset has:
 Rich context variables available for path templates and conditions:
 
 - **time**: `{time.yyyy}`, `{time.mm}`, `{time.dd}`, `{time.month_name}`, etc.
-- **space**: `{space.country}`, `{space.city}`, `{space.road}`, etc.
+- **space**: `{space.country}`, `{space.city}`, `{space.road}`, etc. (uses country codes like ES, FR)
 - **source**: `{source.name}`, `{source.extension}`, `{source.original}`, etc.
-- **media**: `{media.type}`, `{media.width}`, `{media.height}`, `{media.duration}`, etc.
+- **type**: Media type accessed as `type` in conditions ("image" or "video")
+- **meta**: `{meta.*}` - Access ANY EXIF tag by name with proper types
+  - Examples: `{meta.Make}`, `{meta.Model}`, `{meta.FNumber}`, `{meta.ISO}`, `{meta.FocalLength}`
+  - Numeric values stay numeric for comparisons: `meta.FNumber <= 2.8`
+  - Missing tags return empty Dynamic values (safe to reference)
 - **special**: `{special.md5_short}`, `{special.count}` (collision handling)
 
 ### Actions
@@ -127,3 +131,41 @@ cargo test --verbose
 ```
 
 The project emphasizes safety and sandboxing - all user-defined conditions run in Rhai sandbox, and custom commands are opt-in and explicitly defined.
+
+## CLI Usage
+
+The main command runs all cmdline rulesets on a given path:
+
+```bash
+monana --config <CONFIG_FILE> --input-cmdline <PATH> [--dry-run] [--verbose] [--recursive]
+```
+
+Options:
+
+- `--config` / `-c`: Configuration file (default: monana.yaml)
+- `--input-cmdline`: Path to process (required)
+- `--dry-run` / `-d`: Preview actions without executing
+- `--verbose` / `-v`: Show detailed processing information
+- `--recursive` / `-R`: Process directories recursively
+
+## Implementation Details
+
+### EXIF Metadata Handling
+
+- All EXIF tags are extracted and stored in `MediaContext.meta` as a `HashMap<String, Dynamic>`
+- The Dynamic type from Rhai preserves numeric types for proper comparisons
+- Template resolution converts Dynamic values to strings when needed
+- Missing EXIF tags return empty values instead of errors
+
+### Rhai Condition Evaluation
+
+- Conditions use dot notation: `space.city`, `time.yyyy`, `meta.FNumber`
+- The pipeline creates Rhai object maps to support this syntax
+- Numeric comparisons work directly: `meta.ISO >= 3200`
+- String comparisons require quotes: `space.country == "ES"`
+
+## Developer Reminders
+
+- Always run clippy before committing: `cargo clippy --all-targets --all-features -- -D warnings`
+- Test with real photos to verify GPS/EXIF extraction
+- Use `--dry-run` when testing configuration changes

@@ -111,62 +111,57 @@ impl RuleEngine {
     pub fn evaluate_condition(&self, condition: &str, context: &MediaContext) -> Result<bool> {
         let mut scope = Scope::new();
 
-        // Add time variables
+        // Create time object map
+        let mut time_map = rhai::Map::new();
         let time = &context.time;
-        scope.push("time_yyyy", time.yyyy.clone());
-        scope.push("time_mm", time.mm.clone());
-        scope.push("time_dd", time.dd.clone());
-        scope.push("time_month_name", time.month_name.clone());
-        scope.push("time_weekday", time.weekday.clone());
-        scope.push("time_hh", time.hh.clone());
-        scope.push("time_min", time.min.clone());
-        scope.push("time_ss", time.ss.clone());
+        time_map.insert("yyyy".into(), Dynamic::from(time.yyyy.clone()));
+        time_map.insert("mm".into(), Dynamic::from(time.mm.clone()));
+        time_map.insert("dd".into(), Dynamic::from(time.dd.clone()));
+        time_map.insert("month_name".into(), Dynamic::from(time.month_name.clone()));
+        time_map.insert("weekday".into(), Dynamic::from(time.weekday.clone()));
+        time_map.insert("hh".into(), Dynamic::from(time.hh.clone()));
+        time_map.insert("min".into(), Dynamic::from(time.min.clone()));
+        time_map.insert("ss".into(), Dynamic::from(time.ss.clone()));
+        scope.push("time", time_map);
 
-        // Add space variables
+        // Create space object map
+        let mut space_map = rhai::Map::new();
         let space = &context.space;
-        scope.push("space_country", space.country.clone());
-        scope.push("space_country_code", space.country_code.clone());
-        scope.push("space_state", space.state.clone());
-        scope.push("space_city", space.city.clone());
-        scope.push("space_district", space.district.clone());
-        scope.push("space_road", space.road.clone());
-        scope.push("space_lat", space.lat);
-        scope.push("space_lon", space.lon);
+        space_map.insert("country".into(), Dynamic::from(space.country.clone()));
+        space_map.insert(
+            "country_code".into(),
+            Dynamic::from(space.country_code.clone()),
+        );
+        space_map.insert("state".into(), Dynamic::from(space.state.clone()));
+        space_map.insert("city".into(), Dynamic::from(space.city.clone()));
+        space_map.insert("district".into(), Dynamic::from(space.district.clone()));
+        space_map.insert("road".into(), Dynamic::from(space.road.clone()));
+        space_map.insert("lat".into(), Dynamic::from(space.lat));
+        space_map.insert("lon".into(), Dynamic::from(space.lon));
         if let Some(altitude) = space.altitude {
-            scope.push("space_altitude", altitude);
+            space_map.insert("altitude".into(), Dynamic::from(altitude));
         }
+        scope.push("space", space_map);
 
-        // Add source variables
+        // Create source object map
+        let mut source_map = rhai::Map::new();
         let source = &context.source;
-        scope.push("source_path", source.path.clone());
-        scope.push("source_name", source.name.clone());
-        scope.push("source_extension", source.extension.clone());
-        scope.push("source_original", source.original.clone());
-        scope.push("source_size", source.size as i64);
+        source_map.insert("path".into(), Dynamic::from(source.path.clone()));
+        source_map.insert("name".into(), Dynamic::from(source.name.clone()));
+        source_map.insert("extension".into(), Dynamic::from(source.extension.clone()));
+        source_map.insert("original".into(), Dynamic::from(source.original.clone()));
+        source_map.insert("size".into(), Dynamic::from(source.size as i64));
+        scope.push("source", source_map);
 
-        // Add media variables
-        let media = &context.media;
-        scope.push("media_type", media.r#type.clone());
-        scope.push("media_width", media.width as i64);
-        scope.push("media_height", media.height as i64);
-        if let Some(duration) = media.duration {
-            scope.push("media_duration", duration);
-        } else {
-            scope.push("media_duration", 0.0);
+        // Add type variable
+        scope.push("type", context.r#type.clone());
+
+        // Add meta as a Rhai object map
+        let mut meta_map = rhai::Map::new();
+        for (key, value) in &context.meta {
+            meta_map.insert(key.clone().into(), value.clone());
         }
-        if let Some(camera_make) = &media.camera_make {
-            scope.push("media_camera_make", camera_make.clone());
-        } else {
-            scope.push("media_camera_make", "".to_string());
-        }
-        if let Some(camera_model) = &media.camera_model {
-            scope.push("media_camera_model", camera_model.clone());
-        } else {
-            scope.push("media_camera_model", "".to_string());
-        }
-        if let Some(orientation) = media.orientation {
-            scope.push("media_orientation", orientation as i64);
-        }
+        scope.push("meta", meta_map);
 
         // Evaluate the condition expression
         let result: Dynamic = self
@@ -196,7 +191,7 @@ impl RuleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metadata::context::{MediaInfo, TimeContext};
+    use crate::metadata::context::TimeContext;
 
     #[test]
     fn test_simple_condition() {
@@ -214,24 +209,25 @@ mod tests {
                 weekday: "Monday".to_string(),
                 timestamp: None,
             },
-            media: defaultctx.media.clone(),
+            r#type: defaultctx.r#type.clone(),
+            meta: defaultctx.meta.clone(),
             source: defaultctx.source.clone(),
             space: defaultctx.space.clone(),
         };
 
         assert!(
             engine
-                .evaluate_condition("time_yyyy == \"2024\"", &context)
+                .evaluate_condition("time.yyyy == \"2024\"", &context)
                 .unwrap()
         );
         assert!(
             !engine
-                .evaluate_condition("time_yyyy == \"2023\"", &context)
+                .evaluate_condition("time.yyyy == \"2023\"", &context)
                 .unwrap()
         );
         assert!(
             engine
-                .evaluate_condition("time_mm == \"12\"", &context)
+                .evaluate_condition("time.mm == \"12\"", &context)
                 .unwrap()
         );
     }
@@ -253,25 +249,24 @@ mod tests {
             timestamp: None,
         };
 
-        let mediactx = MediaInfo {
-            r#type: "image".to_string(),
-            width: 1920,
-            height: 1080,
-            duration: None,
-            camera_make: None,
-            camera_model: None,
-            orientation: None,
-        };
-
-        let context = MediaContext {
+        let mut context = MediaContext {
             time: timectx,
-            media: mediactx,
+            r#type: "image".to_string(),
             source: ctxdefault.source.clone(),
             space: ctxdefault.space.clone(),
+            meta: Default::default(),
         };
 
+        // Add metadata values
+        context
+            .meta
+            .insert("ImageWidth".to_string(), Dynamic::from(1920i64));
+        context
+            .meta
+            .insert("ImageHeight".to_string(), Dynamic::from(1080i64));
+
         let condition =
-            "time_yyyy == \"2024\" && time_month_name == \"July\" && media_width > 1000";
+            "time.yyyy == \"2024\" && time.month_name == \"July\" && meta.ImageWidth > 1000";
         assert!(engine.evaluate_condition(condition, &context).unwrap());
     }
 
@@ -300,18 +295,16 @@ mod tests {
             size: 1024,
         };
 
-        context.media = MediaInfo {
-            r#type: "image".to_string(),
-            width: 1920,
-            height: 1080,
-            duration: None,
-            camera_make: None,
-            camera_model: None,
-            orientation: None,
-        };
+        context.r#type = "image".to_string();
+        context
+            .meta
+            .insert("ImageWidth".to_string(), Dynamic::from(1920i64));
+        context
+            .meta
+            .insert("ImageHeight".to_string(), Dynamic::from(1080i64));
 
         let rule = Rule {
-            condition: "media_type == \"image\"".to_string(),
+            condition: "type == \"image\"".to_string(),
             template: "{time.yyyy}/{time.mm}/{source.name}.{source.extension}".to_string(),
             action: ActionSpec::Move,
         };
@@ -329,25 +322,26 @@ mod tests {
         let engine = RuleEngine::new().unwrap();
         let defaultctx = MediaContext::default();
 
-        let mediactx = MediaInfo {
+        let mut context = MediaContext {
             r#type: "video".to_string(),
-            width: 1920,
-            height: 1080,
-            duration: Some(120.5),
-            camera_make: None,
-            camera_model: None,
-            orientation: None,
-        };
-
-        let context = MediaContext {
-            media: mediactx,
             time: defaultctx.time.clone(),
             source: defaultctx.source.clone(),
             space: defaultctx.space.clone(),
+            meta: Default::default(),
         };
 
+        context
+            .meta
+            .insert("ImageWidth".to_string(), Dynamic::from(1920i64));
+        context
+            .meta
+            .insert("ImageHeight".to_string(), Dynamic::from(1080i64));
+        context
+            .meta
+            .insert("duration".to_string(), Dynamic::from(120.5));
+
         let rule = Rule {
-            condition: "media_type == \"image\"".to_string(),
+            condition: "type == \"image\"".to_string(),
             template: "{time.yyyy}/{time.mm}/{source.name}.{source.extension}".to_string(),
             action: ActionSpec::Copy,
         };
