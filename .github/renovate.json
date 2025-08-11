@@ -1,0 +1,253 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate configuration for monana - Media Organization, Normalization, and Archival system",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":automergeDigest",
+    ":automergePatch",
+    ":automergeMinor",
+    "group:monorepos",
+    "group:recommended",
+    "workarounds:all"
+  ],
+  "timezone": "Etc/UTC",
+  "schedule": [
+    "before 6am on Monday"
+  ],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "branchPrefix": "renovate/",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "to v{{newVersion}}",
+  "commitMessageSuffix": "",
+  "semanticCommits": "enabled",
+  "separateMajorMinor": true,
+  "separateMultipleMajor": true,
+  "separateMinorPatch": false,
+  "rangeStrategy": "bump",
+  "bumpVersion": "patch",
+  "labels": [
+    "dependencies",
+    "renovate"
+  ],
+  "assignees": [],
+  "reviewers": [],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": "at any time"
+  },
+  "osvVulnerabilityAlerts": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 6am on Monday"
+    ],
+    "commitMessageAction": "Update",
+    "commitMessageTopic": "lockfile",
+    "commitMessageExtra": "",
+    "branchTopic": "lock-file-maintenance",
+    "prTitle": "chore: update lockfile"
+  },
+  "cargo": {
+    "enabled": true,
+    "rangeStrategy": "bump"
+  },
+  "packageRules": [
+    {
+      "description": "Group Rust toolchain updates",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "rust",
+        "rustc"
+      ],
+      "groupName": "Rust toolchain",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Group async runtime dependencies",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "tokio",
+        "tokio-*",
+        "async-*",
+        "futures",
+        "futures-*"
+      ],
+      "groupName": "async runtime",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Group serialization dependencies",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "serde",
+        "serde_*",
+        "serde-*"
+      ],
+      "groupName": "serialization",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Group CLI/argument parsing dependencies",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "clap",
+        "clap_*",
+        "clap-*"
+      ],
+      "groupName": "CLI parsing",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Group image processing dependencies",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "image",
+        "image-*",
+        "jpeg-*",
+        "png",
+        "tiff",
+        "gif",
+        "webp",
+        "avif-*",
+        "qoi"
+      ],
+      "groupName": "image processing",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Group time/date dependencies",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "chrono",
+        "time"
+      ],
+      "groupName": "time handling",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Group tracing/logging dependencies",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "tracing",
+        "tracing-*",
+        "log",
+        "env_logger"
+      ],
+      "groupName": "logging",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Group filesystem dependencies",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "walkdir",
+        "notify",
+        "notify-*",
+        "camino"
+      ],
+      "groupName": "filesystem",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Enable automerge for patch and minor updates of stable crates",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "matchCurrentVersion": "!/^0\\./",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Disable automerge for major updates",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "Disable automerge for pre-1.0 crates (potentially unstable)",
+      "matchManagers": ["cargo"],
+      "matchCurrentVersion": "/^0\\./",
+      "automerge": false
+    },
+    {
+      "description": "High priority for security vulnerabilities",
+      "matchPackageNames": ["*"],
+      "vulnerabilityAlerts": {
+        "enabled": true
+      },
+      "prPriority": 10,
+      "schedule": "at any time",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "GitHub Actions workflow dependencies",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "schedule": [
+        "before 6am on Monday"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "Major GitHub Actions updates require manual review",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "Nix flake dependencies",
+      "matchManagers": ["nix"],
+      "groupName": "Nix dependencies",
+      "schedule": [
+        "before 6am on Monday"
+      ],
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update Rust version in flake.nix",
+      "fileMatch": ["^flake\\.nix$"],
+      "matchStrings": [
+        "rust-overlay\\.packages\\.\\$\\{system\\}\\.rust\\.override\\s*\\{\\s*channel\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "rust",
+      "datasourceTemplate": "github-releases",
+      "packageNameTemplate": "rust-lang/rust"
+    }
+  ],
+  "ignoreDeps": [
+    "node_modules",
+    "target"
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/target/**",
+    "**/.git/**"
+  ]
+}
