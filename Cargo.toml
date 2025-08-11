@@ -1,6 +1,6 @@
 [package]
 name = "monana"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Media Organization, Normalization, and Archival via Named Automation"
 
@@ -8,7 +8,7 @@ description = "Media Organization, Normalization, and Archival via Named Automat
 anyhow = "1.0.98"
 camino = { version = "1.1.10", features = ["serde1"] }
 chrono = { version = "0.4.41", features = ["serde"] }
-clap = { version = "4.5.42", features = ["derive"] }
+clap = { version = "4.5.43", features = ["derive"] }
 image = "0.25.6"
 lazy_static = "1.5.0"
 md5 = "0.8.0"
