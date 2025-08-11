@@ -1,0 +1,5 @@
+# Renovate Configuration
+
+## Nix Flake Updates
+
+Renovate should monitor `flake.nix` and `flake.lock` files for Nix input updates and handle flake lock file maintenance.
