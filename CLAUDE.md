@@ -119,8 +119,23 @@ Uses Figment for flexible configuration management supporting:
 
 Configuration sections:
 
+- **location_history_path** (optional): Path to Google Maps Timeline JSON export for GPS fallback
 - **actions**: Custom command definitions
 - **rulesets**: Pipeline stage definitions with input sources and processing rules
+
+### Location History Integration
+
+MONANA can use Google Maps Timeline location history as a fallback for photos without EXIF GPS data:
+
+```yaml
+location_history_path: "path/to/location_history.json"
+```
+
+When configured:
+- Photos without EXIF GPS coordinates will search the location history
+- The closest location point within 48 hours of the photo's timestamp is used
+- Coordinates are converted from E7 format and reverse geocoded
+- This provides seamless GPS data for all photos in your archive
 
 ## Testing Strategy
 
@@ -137,13 +152,14 @@ The project emphasizes safety and sandboxing - all user-defined conditions run i
 The main command runs all cmdline rulesets on a given path:
 
 ```bash
-monana --config <CONFIG_FILE> --input-cmdline <PATH> [--dry-run] [--verbose] [--recursive]
+monana --config <CONFIG_FILE> --input-cmdline <PATH> [--location-history <JSON>] [--dry-run] [--verbose] [--recursive]
 ```
 
 Options:
 
 - `--config` / `-c`: Configuration file (default: monana.yaml)
 - `--input-cmdline`: Path to process (required)
+- `--location-history`: Google Maps Timeline JSON file (overrides config)
 - `--dry-run` / `-d`: Preview actions without executing
 - `--verbose` / `-v`: Show detailed processing information
 - `--recursive` / `-R`: Process directories recursively
