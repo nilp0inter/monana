@@ -1,6 +1,6 @@
 [package]
 name = "monana"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Media Organization, Normalization, and Archival via Named Automation"
 
@@ -21,7 +21,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.47.1", features = ["full"] }
 tracing = "0.1.41"
-tree_magic_mini = "3.1.6"
+tree_magic_mini = "3.2.0"
 walkdir = "2.5.0"
 serde_yaml = "0.9"
 rayon = "1.11.0"
