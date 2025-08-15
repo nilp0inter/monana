@@ -1,0 +1,36 @@
+{
+  "locations": [
+    {
+      "timestampMs": "10000",
+      "latitudeE7": 10000000,
+      "longitudeE7": 10000000,
+      "accuracy": 10
+    },
+    {
+      "timestampMs": "20000",
+      "latitudeE7": 20000000,
+      "longitudeE7": 20000000,
+      "accuracy": 20,
+      "activity": [
+        {
+          "timestampMs": "21000",
+          "activity": [
+            { "type": "STILL", "confidence": 80 }
+          ]
+        },
+        {
+          "timestampMs": "22000",
+          "activity": [
+            { "type": "IN_VEHICLE", "confidence": 90 }
+          ]
+        }
+      ]
+    },
+    {
+      "timestampMs": "30000",
+      "latitudeE7": 30000000,
+      "longitudeE7": 30000000,
+      "accuracy": 30
+    }
+  ]
+}
