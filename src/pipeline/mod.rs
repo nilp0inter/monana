@@ -162,6 +162,14 @@ impl RuleEngine {
         source_map.insert("size".into(), Dynamic::from(source.size as i64));
         scope.push("source", source_map);
 
+        // Create special object map
+        let mut special_map = rhai::Map::new();
+        let special = &context.special;
+        special_map.insert("md5".into(), Dynamic::from(special.md5.clone()));
+        special_map.insert("md5_short".into(), Dynamic::from(special.md5_short.clone()));
+        special_map.insert("count".into(), Dynamic::from(special.count as i64));
+        scope.push("special", special_map);
+
         // Add type variable
         scope.push("type", context.r#type.clone());
 
@@ -222,6 +230,7 @@ mod tests {
             meta: defaultctx.meta.clone(),
             source: defaultctx.source.clone(),
             space: defaultctx.space.clone(),
+            special: defaultctx.special.clone(),
         };
 
         assert!(
@@ -264,6 +273,7 @@ mod tests {
             source: ctxdefault.source.clone(),
             space: ctxdefault.space.clone(),
             meta: Default::default(),
+            special: ctxdefault.special.clone(),
         };
 
         // Add metadata values
@@ -337,6 +347,7 @@ mod tests {
             source: defaultctx.source.clone(),
             space: defaultctx.space.clone(),
             meta: Default::default(),
+            special: defaultctx.special.clone(),
         };
 
         context

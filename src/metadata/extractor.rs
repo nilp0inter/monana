@@ -4,9 +4,10 @@ use chrono::{DateTime, Utc};
 use nom_exif::{ExifIter, ExifTag, MediaParser, MediaSource};
 use rhai::Dynamic;
 use std::fs;
+use std::io::Read;
 use std::sync::Arc;
 
-use super::context::{MediaContext, SourceContext, TimeContext};
+use super::context::{MediaContext, SourceContext, SpecialContext, TimeContext};
 use super::location::reverse_geocode;
 use super::location_history::LocationHistory;
 
@@ -42,6 +43,9 @@ pub fn extract_metadata_with_location_history(
 
     // Apply fallbacks for missing data
     apply_fallbacks(&mut context, path, location_history, max_hours)?;
+
+    // Calculate MD5 hash
+    context.special = calculate_file_hash(path)?;
 
     // Ensure defaults for required fields
     apply_defaults(&mut context);
@@ -473,4 +477,21 @@ fn apply_defaults(context: &mut MediaContext) {
         context.space.city = "unknown".to_string();
         context.space.country = "unknown".to_string();
     }
+}
+
+fn calculate_file_hash(path: &Utf8Path) -> Result<SpecialContext> {
+    // Read file and calculate MD5
+    let mut file = fs::File::open(path)?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+
+    let digest = md5::compute(&buffer);
+    let md5_full = format!("{digest:x}");
+    let md5_short = md5_full.chars().take(8).collect::<String>();
+
+    Ok(SpecialContext {
+        md5: md5_full,
+        md5_short,
+        count: 0, // This will be used for collision handling in the future
+    })
 }

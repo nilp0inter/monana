@@ -8,6 +8,7 @@ pub struct MediaContext {
     pub time: TimeContext,
     pub space: SpaceContext,
     pub source: SourceContext,
+    pub special: SpecialContext,
     pub r#type: String,
     pub meta: HashMap<String, Dynamic>,
 }
@@ -45,4 +46,11 @@ pub struct SourceContext {
     pub extension: String,
     pub original: String,
     pub size: u64,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SpecialContext {
+    pub md5: String,
+    pub md5_short: String,
+    pub count: u32,
 }

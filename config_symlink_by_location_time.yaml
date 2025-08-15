@@ -1,0 +1,67 @@
+# Configuration for organized file structure with multiple symlink views
+# Main structure: /home/nil/Photos/files/{Images,Videos}/YYYY-MM-DD/md5_short/original_filename
+location_history_max_hours: 12
+
+rulesets:
+  - name: organize_files_by_type_and_hash
+    input: cmdline
+    rules:
+      # Copy images to organized structure
+      - condition: 'type == "image"'
+        template: "/home/nil/Photos/files/Images/{time.yyyy}-{time.mm}-{time.dd}/{special.md5_short}/{source.original}"
+        action: copy
+      
+      # Copy videos to organized structure
+      - condition: 'type == "video"'
+        template: "/home/nil/Photos/files/Videos/{time.yyyy}-{time.mm}-{time.dd}/{special.md5_short}/{source.original}"
+        action: copy
+      
+      # Fallback for unknown types
+      - condition: 'true'
+        template: "/home/nil/Photos/files/Unknown/{time.yyyy}-{time.mm}-{time.dd}/{special.md5_short}/{source.original}"
+        action: copy
+
+  - name: symlinks_by_location_and_time
+    input: "ruleset:organize_files_by_type_and_hash"
+    rules:
+      # Create symlinks organized by location hierarchy then time
+      - condition: 'space.country != "unknown" && space.country != ""'
+        template: "/home/nil/Photos/by_location_time/{space.country}/{space.state}/{space.city}/{space.district}/{space.road}/{time.yyyy}/{time.mm}/{time.dd}/{time.hh}-{time.min}-{time.ss}.{source.extension}"
+        action: symlink
+      
+      # Fallback for files without location
+      - condition: 'true'
+        template: "/home/nil/Photos/by_location_time/no_location/{time.yyyy}/{time.mm}/{time.dd}/{time.hh}-{time.min}-{time.ss}.{source.extension}"
+        action: symlink
+
+  - name: symlinks_by_time_and_location
+    input: "ruleset:organize_files_by_type_and_hash"
+    rules:
+      # Organize by time first, then location
+      - condition: 'space.country != "unknown" && space.country != ""'
+        template: "/home/nil/Photos/by_time_location/{time.yyyy}/{time.mm}/{time.dd}/{space.country}/{space.city}/{time.hh}-{time.min}-{time.ss}.{source.extension}"
+        action: symlink
+      
+      - condition: 'true'
+        template: "/home/nil/Photos/by_time_location/{time.yyyy}/{time.mm}/{time.dd}/no_location/{time.hh}-{time.min}-{time.ss}.{source.extension}"
+        action: symlink
+
+  - name: symlinks_by_time
+    input: "ruleset:organize_files_by_type_and_hash"
+    rules:
+      # Organize only by time
+      - condition: 'true'
+        template: "/home/nil/Photos/by_time/{time.yyyy}/{time.mm}/{time.dd}/{time.hh}-{time.min}-{time.ss}.{source.extension}"
+        action: symlink
+
+  - name: symlinks_by_location
+    input: "ruleset:organize_files_by_type_and_hash"
+    rules:
+      # Organize only by location (preserving original filename)
+      - condition: 'space.country != "unknown" && space.country != ""'
+        template: "/home/nil/Photos/by_location/{space.country}/{space.state}/{space.city}/{source.original}"
+        action: symlink
+      
+      - condition: 'true'
+        template: "/home/nil/Photos/by_location/no_location/{source.original}"
+        action: symlink

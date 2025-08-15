@@ -52,6 +52,12 @@ fn resolve_variable(var_name: &str, context: &MediaContext) -> Option<String> {
             "size" => Some(context.source.size.to_string()),
             _ => None,
         },
+        ["special", field] => match *field {
+            "md5" => Some(context.special.md5.clone()),
+            "md5_short" => Some(context.special.md5_short.clone()),
+            "count" => Some(context.special.count.to_string()),
+            _ => None,
+        },
         ["type"] => Some(context.r#type.clone()),
         ["meta", tag] => context.meta.get(*tag).map(dynamic_to_string),
         _ => None,

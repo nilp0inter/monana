@@ -7,8 +7,12 @@ use walkdir::WalkDir;
 
 use monana::{
     actions::Action,
-    metadata::{LocationHistory, extractor::extract_metadata_with_location_history},
-    pipeline::{Pipeline, RuleEngine, Ruleset},
+    metadata::{
+        LocationHistory,
+        context::{MediaContext, SourceContext},
+        extractor::extract_metadata_with_location_history,
+    },
+    pipeline::{InputSpec, Pipeline, RuleEngine, Ruleset},
 };
 
 #[derive(Parser)]
@@ -116,56 +120,85 @@ fn main() -> Result<()> {
         println!("🔍 DRY RUN MODE - No files will be moved\n");
     }
 
-    // Process each ruleset
-    for ruleset in &cmdline_rulesets {
-        println!("🔧 Processing ruleset: {}", ruleset.name);
-        println!("   Rules: {}", ruleset.rules.len());
+    // Process each file through the entire pipeline
+    let mut total_processed = 0;
+    let mut total_matched = 0;
+    let mut total_errors = 0;
 
-        let mut processed = 0;
-        let mut matched = 0;
-        let mut errors = 0;
-        let mut no_match_files = Vec::new();
+    for file_path in &all_files {
+        total_processed += 1;
 
-        for file_path in &all_files {
-            processed += 1;
+        if args.verbose {
+            println!("\n🔄 Processing file: {file_path}");
+        }
 
+        // Extract metadata once per file
+        let context = match extract_metadata_with_location_history(
+            file_path,
+            location_history.clone(),
+            Some(pipeline.location_history_max_hours),
+        ) {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                eprintln!("❌ Error extracting metadata from {file_path}: {e}");
+                total_errors += 1;
+                continue;
+            }
+        };
+
+        if args.verbose {
+            println!("  📊 Type: {}", context.r#type);
+            if !context.meta.is_empty() {
+                println!("  📷 EXIF tags found: {}", context.meta.len());
+            }
+        }
+
+        // Process through all cmdline rulesets (entry points)
+        let mut file_matched = false;
+        for ruleset in &cmdline_rulesets {
             if args.verbose {
-                println!("\n🔄 Processing: {file_path}");
+                println!("  🔧 Starting pipeline with ruleset: {}", ruleset.name);
             }
 
-            match process_file(
+            match process_file_recursive(
                 file_path,
+                &context,
                 ruleset,
+                &pipeline,
                 &engine,
                 args.dry_run,
                 args.verbose,
-                location_history.clone(),
-                Some(pipeline.location_history_max_hours),
+                0, // Initial depth
             ) {
-                Ok(true) => matched += 1,
-                Ok(false) => no_match_files.push(file_path.clone()),
+                Ok(true) => {
+                    file_matched = true;
+                    total_matched += 1;
+                }
+                Ok(false) => {
+                    if args.verbose {
+                        println!("  ⚠️  No rules matched in ruleset: {}", ruleset.name);
+                    }
+                }
                 Err(e) => {
-                    eprintln!("❌ Error processing {file_path}: {e}");
-                    errors += 1;
+                    eprintln!(
+                        "❌ Error processing {file_path} through ruleset '{}': {e}",
+                        ruleset.name
+                    );
+                    total_errors += 1;
                 }
             }
         }
 
-        // Show summary for this ruleset
-        println!("\n📊 Ruleset '{}' summary:", ruleset.name);
-        println!("   Files processed: {processed}");
-        println!("   Rules matched: {matched}");
-        println!("   No rules matched: {}", no_match_files.len());
-        println!("   Errors: {errors}");
-
-        if args.verbose && !no_match_files.is_empty() {
-            println!("   Files with no matching rules:");
-            for file in &no_match_files {
-                println!("     - {file}");
-            }
+        if !file_matched && args.verbose {
+            println!("  ⚠️  File did not match any rules: {file_path}");
         }
-        println!();
     }
+
+    // Show overall summary
+    println!("\n📊 Overall summary:");
+    println!("   Files processed: {total_processed}");
+    println!("   Files matched: {total_matched}");
+    println!("   Errors: {total_errors}");
 
     Ok(())
 }
@@ -209,33 +242,33 @@ fn is_media_file(path: &Utf8Path) -> Result<bool> {
         .unwrap_or(false))
 }
 
-fn process_file(
+#[allow(clippy::too_many_arguments)]
+fn process_file_recursive(
     file_path: &Utf8PathBuf,
+    context: &MediaContext,
     ruleset: &Ruleset,
+    pipeline: &Pipeline,
     engine: &RuleEngine,
     dry_run: bool,
     verbose: bool,
-    location_history: Option<Arc<LocationHistory>>,
-    max_hours: Option<u64>,
+    depth: usize,
 ) -> Result<bool> {
-    // Extract metadata
-    let context = extract_metadata_with_location_history(file_path, location_history, max_hours)?;
+    let indent = "  ".repeat(depth + 2);
 
-    if verbose {
-        println!("  📊 Type: {}", context.r#type);
-        if !context.meta.is_empty() {
-            println!("  📷 EXIF tags found: {}", context.meta.len());
-        }
+    if verbose && depth > 0 {
+        println!("{indent}↳ Processing through ruleset: {}", ruleset.name);
     }
 
     // Process rules in order
+    let mut destination_path: Option<Utf8PathBuf> = None;
+
     for rule in &ruleset.rules {
-        match engine.process_rule(rule, &context)? {
+        match engine.process_rule(rule, context)? {
             Some((destination, action)) => {
                 if verbose {
-                    println!("  ✅ Rule matched: {}", rule.condition);
-                    println!("  📁 Destination: {destination}");
-                    println!("  🎯 Action: {action:?}");
+                    println!("{indent}✅ Rule matched: {}", rule.condition);
+                    println!("{indent}📁 Destination: {destination}");
+                    println!("{indent}🎯 Action: {action:?}");
                 }
 
                 if !dry_run {
@@ -247,26 +280,93 @@ fn process_file(
                         monana::pipeline::ActionSpec::Hardlink => Action::Hardlink,
                         monana::pipeline::ActionSpec::Command(cmd) => {
                             // For now, just print custom commands
-                            println!("  🔧 Would run custom command: {cmd}");
-                            return Ok(true);
+                            println!("{indent}🔧 Would run custom command: {cmd}");
+                            destination_path = Some(Utf8PathBuf::from(&destination));
+                            break;
                         }
                     };
 
                     let dest_path = Utf8PathBuf::from(&destination);
                     action_enum.execute(file_path, &dest_path)?;
-                } else if !verbose {
-                    println!("  {file_path} -> {destination}");
+                    destination_path = Some(dest_path);
+                } else {
+                    println!("{indent}{file_path} -> {destination}");
+                    destination_path = Some(Utf8PathBuf::from(&destination));
                 }
 
-                return Ok(true);
+                // First matching rule wins, exit the loop
+                break;
             }
             None => {
                 if verbose {
-                    println!("  ❌ Rule not matched: {}", rule.condition);
+                    println!("{indent}❌ Rule not matched: {}", rule.condition);
                 }
             }
         }
     }
 
-    Ok(false)
+    // If a rule matched and produced a destination, process dependent rulesets
+    if let Some(dest_path) = destination_path {
+        // Find all rulesets that depend on this one
+        let dependents = find_dependent_rulesets(&ruleset.name, &pipeline.rulesets);
+
+        if !dependents.is_empty() && verbose {
+            println!("{indent}🔗 Found {} dependent ruleset(s)", dependents.len());
+        }
+
+        for dependent in dependents {
+            // Create new context with updated source path but preserve all other metadata
+            let mut new_context = context.clone();
+            new_context.source = create_source_context(&dest_path)?;
+
+            // Recursively process through the dependent ruleset
+            process_file_recursive(
+                &dest_path,
+                &new_context,
+                dependent,
+                pipeline,
+                engine,
+                dry_run,
+                verbose,
+                depth + 1,
+            )?;
+        }
+
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn find_dependent_rulesets<'a>(
+    ruleset_name: &str,
+    all_rulesets: &'a [Ruleset],
+) -> Vec<&'a Ruleset> {
+    let expected_input = format!("ruleset:{ruleset_name}");
+
+    all_rulesets
+        .iter()
+        .filter(|r| match &r.input {
+            InputSpec::Cmdline => false,
+            InputSpec::Prefixed(s) => s == &expected_input,
+        })
+        .collect()
+}
+
+fn create_source_context(path: &Utf8PathBuf) -> Result<SourceContext> {
+    let name = path.file_stem().unwrap_or("").to_string();
+
+    let extension = path.extension().unwrap_or("").to_string();
+
+    let original = path.file_name().unwrap_or("").to_string();
+
+    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+
+    Ok(SourceContext {
+        path: path.to_string(),
+        name,
+        extension,
+        original,
+        size,
+    })
 }
