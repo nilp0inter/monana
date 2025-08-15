@@ -1,8 +1,12 @@
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Parser;
+use rayon::prelude::*;
 use std::fs;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use walkdir::WalkDir;
 
 use monana::{
@@ -42,6 +46,10 @@ struct Args {
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
+
+    /// Number of parallel workers (default: number of CPUs)
+    #[arg(short = 'P', long, value_name = "NUM")]
+    parallel: Option<usize>,
 }
 
 fn main() -> Result<()> {
@@ -97,8 +105,7 @@ fn main() -> Result<()> {
         println!("   - {}", ruleset.name);
     }
 
-    // Create rule engine
-    let engine = RuleEngine::new()?;
+    // Note: RuleEngine will be created per thread due to Rhai not being thread-safe
 
     // Check if input path exists
     if !args.input_cmdline.exists() {
@@ -120,13 +127,39 @@ fn main() -> Result<()> {
         println!("🔍 DRY RUN MODE - No files will be moved\n");
     }
 
-    // Process each file through the entire pipeline
-    let mut total_processed = 0;
-    let mut total_matched = 0;
-    let mut total_errors = 0;
+    // Configure parallel processing
+    let parallelism = args.parallel.unwrap_or_else(|| {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
+    });
 
-    for file_path in &all_files {
-        total_processed += 1;
+    if parallelism > 1 {
+        println!("🚀 Processing with {parallelism} parallel workers");
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(parallelism)
+            .build_global()
+            .unwrap_or_else(|e| eprintln!("⚠️  Failed to configure thread pool: {e}"));
+    }
+
+    // Use atomic counters for thread-safe statistics
+    let total_processed = AtomicUsize::new(0);
+    let total_matched = AtomicUsize::new(0);
+    let total_errors = AtomicUsize::new(0);
+
+    // Process files in parallel
+    all_files.par_iter().for_each(|file_path| {
+        total_processed.fetch_add(1, Ordering::Relaxed);
+
+        // Create a new RuleEngine for this thread (Rhai is not thread-safe)
+        let engine = match RuleEngine::new() {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("❌ Error creating rule engine: {e}");
+                total_errors.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        };
 
         if args.verbose {
             println!("\n🔄 Processing file: {file_path}");
@@ -141,8 +174,8 @@ fn main() -> Result<()> {
             Ok(ctx) => ctx,
             Err(e) => {
                 eprintln!("❌ Error extracting metadata from {file_path}: {e}");
-                total_errors += 1;
-                continue;
+                total_errors.fetch_add(1, Ordering::Relaxed);
+                return;
             }
         };
 
@@ -172,7 +205,6 @@ fn main() -> Result<()> {
             ) {
                 Ok(true) => {
                     file_matched = true;
-                    total_matched += 1;
                 }
                 Ok(false) => {
                     if args.verbose {
@@ -184,21 +216,29 @@ fn main() -> Result<()> {
                         "❌ Error processing {file_path} through ruleset '{}': {e}",
                         ruleset.name
                     );
-                    total_errors += 1;
+                    total_errors.fetch_add(1, Ordering::Relaxed);
                 }
             }
         }
 
-        if !file_matched && args.verbose {
+        if file_matched {
+            total_matched.fetch_add(1, Ordering::Relaxed);
+        } else if args.verbose {
             println!("  ⚠️  File did not match any rules: {file_path}");
         }
-    }
+    });
 
     // Show overall summary
     println!("\n📊 Overall summary:");
-    println!("   Files processed: {total_processed}");
-    println!("   Files matched: {total_matched}");
-    println!("   Errors: {total_errors}");
+    println!(
+        "   Files processed: {}",
+        total_processed.load(Ordering::Relaxed)
+    );
+    println!(
+        "   Files matched: {}",
+        total_matched.load(Ordering::Relaxed)
+    );
+    println!("   Errors: {}", total_errors.load(Ordering::Relaxed));
 
     Ok(())
 }
