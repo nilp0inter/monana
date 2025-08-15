@@ -57,7 +57,9 @@
   "packageRules": [
     {
       "description": "Group Rust toolchain updates",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchPackageNames": [
         "rust",
         "rustc"
@@ -69,7 +71,9 @@
     },
     {
       "description": "Group async runtime dependencies",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchPackageNames": [
         "tokio",
         "tokio-*",
@@ -84,7 +88,9 @@
     },
     {
       "description": "Group serialization dependencies",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchPackageNames": [
         "serde",
         "serde_*",
@@ -97,7 +103,9 @@
     },
     {
       "description": "Group CLI/argument parsing dependencies",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchPackageNames": [
         "clap",
         "clap_*",
@@ -110,7 +118,9 @@
     },
     {
       "description": "Group image processing dependencies",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchPackageNames": [
         "image",
         "image-*",
@@ -129,7 +139,9 @@
     },
     {
       "description": "Group time/date dependencies",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchPackageNames": [
         "chrono",
         "time"
@@ -141,7 +153,9 @@
     },
     {
       "description": "Group tracing/logging dependencies",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchPackageNames": [
         "tracing",
         "tracing-*",
@@ -155,7 +169,9 @@
     },
     {
       "description": "Group filesystem dependencies",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchPackageNames": [
         "walkdir",
         "notify",
@@ -169,8 +185,13 @@
     },
     {
       "description": "Enable automerge for patch and minor updates of stable crates",
-      "matchManagers": ["cargo"],
-      "matchUpdateTypes": ["patch", "minor"],
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor"
+      ],
       "matchCurrentVersion": "!/^0\\./",
       "automerge": true,
       "automergeType": "pr",
@@ -178,19 +199,27 @@
     },
     {
       "description": "Disable automerge for major updates",
-      "matchManagers": ["cargo"],
-      "matchUpdateTypes": ["major"],
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "automerge": false
     },
     {
       "description": "Disable automerge for pre-1.0 crates (potentially unstable)",
-      "matchManagers": ["cargo"],
+      "matchManagers": [
+        "cargo"
+      ],
       "matchCurrentVersion": "/^0\\./",
       "automerge": false
     },
     {
       "description": "High priority for security vulnerabilities",
-      "matchPackageNames": ["*"],
+      "matchPackageNames": [
+        "*"
+      ],
       "vulnerabilityAlerts": {
         "enabled": true
       },
@@ -202,7 +231,9 @@
     },
     {
       "description": "GitHub Actions workflow dependencies",
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "GitHub Actions",
       "schedule": [
         "before 6am on Monday"
@@ -210,17 +241,26 @@
       "automerge": true,
       "automergeType": "pr",
       "platformAutomerge": true,
-      "matchUpdateTypes": ["patch", "minor"]
+      "matchUpdateTypes": [
+        "patch",
+        "minor"
+      ]
     },
     {
       "description": "Major GitHub Actions updates require manual review",
-      "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["major"],
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "automerge": false
     },
     {
       "description": "Nix flake dependencies",
-      "matchManagers": ["nix"],
+      "matchManagers": [
+        "nix"
+      ],
       "groupName": "Nix dependencies",
       "schedule": [
         "before 6am on Monday"
@@ -232,7 +272,9 @@
     {
       "customType": "regex",
       "description": "Update Rust version in flake.nix",
-      "fileMatch": ["^flake\\.nix$"],
+      "managerFilePatterns": [
+        "/^flake\\.nix$/"
+      ],
       "matchStrings": [
         "rust-overlay\\.packages\\.\\$\\{system\\}\\.rust\\.override\\s*\\{\\s*channel\\s*=\\s*\"(?<currentValue>[^\"]+)\""
       ],
