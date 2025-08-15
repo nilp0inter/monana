@@ -155,13 +155,21 @@ mod tests {
         assert_eq!(timestamps, vec![10000, 20000, 21000, 22000, 30000]);
 
         // Check a point from an activity
-        let activity_point = history.data.iter().find(|p| p.timestamp_ms == 21000).unwrap();
+        let activity_point = history
+            .data
+            .iter()
+            .find(|p| p.timestamp_ms == 21000)
+            .unwrap();
         // It should have the coordinates of its parent location (ts=20000)
         assert_eq!(activity_point.latitude_e7, 20000000);
         assert_eq!(activity_point.longitude_e7, 20000000);
 
         // Check a top-level point
-        let top_level_point = history.data.iter().find(|p| p.timestamp_ms == 30000).unwrap();
+        let top_level_point = history
+            .data
+            .iter()
+            .find(|p| p.timestamp_ms == 30000)
+            .unwrap();
         assert_eq!(top_level_point.latitude_e7, 30000000);
     }
 
@@ -180,10 +188,26 @@ mod tests {
     fn create_test_history() -> LocationHistory {
         LocationHistory {
             data: vec![
-                LocationPoint { timestamp_ms: 100, latitude_e7: 1, longitude_e7: 1 },
-                LocationPoint { timestamp_ms: 200, latitude_e7: 2, longitude_e7: 2 },
-                LocationPoint { timestamp_ms: 300, latitude_e7: 3, longitude_e7: 3 },
-                LocationPoint { timestamp_ms: 400, latitude_e7: 4, longitude_e7: 4 },
+                LocationPoint {
+                    timestamp_ms: 100,
+                    latitude_e7: 1,
+                    longitude_e7: 1,
+                },
+                LocationPoint {
+                    timestamp_ms: 200,
+                    latitude_e7: 2,
+                    longitude_e7: 2,
+                },
+                LocationPoint {
+                    timestamp_ms: 300,
+                    latitude_e7: 3,
+                    longitude_e7: 3,
+                },
+                LocationPoint {
+                    timestamp_ms: 400,
+                    latitude_e7: 4,
+                    longitude_e7: 4,
+                },
             ],
         }
     }
@@ -231,9 +255,11 @@ mod tests {
     #[test]
     fn test_find_closest_points_single_entry() {
         let history = LocationHistory {
-            data: vec![
-                LocationPoint { timestamp_ms: 100, latitude_e7: 1, longitude_e7: 1 },
-            ],
+            data: vec![LocationPoint {
+                timestamp_ms: 100,
+                latitude_e7: 1,
+                longitude_e7: 1,
+            }],
         };
         // Before
         let (before, after) = history.find_closest_points(50);

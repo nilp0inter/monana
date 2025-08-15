@@ -4,11 +4,21 @@ use chrono::{DateTime, Utc};
 use nom_exif::{ExifIter, ExifTag, MediaParser, MediaSource};
 use rhai::Dynamic;
 use std::fs;
+use std::sync::Arc;
 
 use super::context::{MediaContext, SourceContext, TimeContext};
 use super::location::reverse_geocode;
+use super::location_history::LocationHistory;
 
 pub fn extract_metadata(path: &Utf8Path) -> Result<MediaContext> {
+    extract_metadata_with_location_history(path, None, None)
+}
+
+pub fn extract_metadata_with_location_history(
+    path: &Utf8Path,
+    location_history: Option<Arc<LocationHistory>>,
+    max_hours: Option<u64>,
+) -> Result<MediaContext> {
     let mut context = MediaContext {
         source: extract_source_info(path)?,
         ..Default::default()
@@ -31,7 +41,7 @@ pub fn extract_metadata(path: &Utf8Path) -> Result<MediaContext> {
     }
 
     // Apply fallbacks for missing data
-    apply_fallbacks(&mut context, path)?;
+    apply_fallbacks(&mut context, path, location_history, max_hours)?;
 
     // Ensure defaults for required fields
     apply_defaults(&mut context);
@@ -93,6 +103,12 @@ fn extract_exif_metadata(path: &Utf8Path) -> Result<MediaContext> {
             location.lon = lon;
             location.altitude = context.space.altitude;
             context.space = location;
+
+            // Log GPS source
+            eprintln!(
+                "🛰️  GPS from EXIF: {:.6}, {:.6} -> {}, {}",
+                lat, lon, context.space.country, context.space.city
+            );
         }
     }
 
@@ -230,7 +246,12 @@ fn create_time_context(dt: DateTime<Utc>) -> TimeContext {
     }
 }
 
-fn apply_fallbacks(context: &mut MediaContext, path: &Utf8Path) -> Result<()> {
+fn apply_fallbacks(
+    context: &mut MediaContext,
+    path: &Utf8Path,
+    location_history: Option<Arc<LocationHistory>>,
+    max_hours: Option<u64>,
+) -> Result<()> {
     // Use image crate for dimensions if not in meta
     let has_width =
         context.meta.contains_key("ImageWidth") || context.meta.contains_key("ExifImageWidth");
@@ -267,6 +288,107 @@ fn apply_fallbacks(context: &mut MediaContext, path: &Utf8Path) -> Result<()> {
                 let dt: DateTime<Utc> = created.into();
                 context.time = create_time_context(dt);
             }
+        }
+    }
+
+    // Use location history as fallback for GPS coordinates
+    if context.space.lat == 0.0 && context.space.lon == 0.0 {
+        eprintln!("🔍 No GPS in EXIF, checking Location History...");
+        if let Some(ref location_history) = location_history {
+            if let Some(ref timestamp) = context.time.timestamp {
+                // Convert timestamp to milliseconds
+                let photo_timestamp_ms = timestamp.timestamp_millis() as u64;
+                eprintln!(
+                    "📅 Photo timestamp: {} ms ({})",
+                    photo_timestamp_ms,
+                    timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+                );
+
+                // Find closest location points
+                let (before, after) = location_history.find_closest_points(photo_timestamp_ms);
+                eprintln!(
+                    "🔍 Found location points: before={:?}, after={:?}",
+                    before.map(|p| (p.timestamp_ms, p.latitude_e7, p.longitude_e7)),
+                    after.map(|p| (p.timestamp_ms, p.latitude_e7, p.longitude_e7))
+                );
+
+                // Convert max hours to milliseconds (default 48 hours)
+                let max_hours_actual = max_hours.unwrap_or(48);
+                let max_time_diff_ms = max_hours_actual * 60 * 60 * 1000;
+                eprintln!(
+                    "🕒 Using location history threshold: {max_hours_actual} hours ({max_time_diff_ms} ms)"
+                );
+
+                // Select the closest point within 48 hours
+                let selected_point = match (before, after) {
+                    (Some(b), Some(a)) => {
+                        let diff_before = photo_timestamp_ms.saturating_sub(b.timestamp_ms);
+                        let diff_after = a.timestamp_ms.saturating_sub(photo_timestamp_ms);
+
+                        if diff_before <= max_time_diff_ms && diff_after <= max_time_diff_ms {
+                            // Both within threshold, choose closer one
+                            if diff_before <= diff_after {
+                                Some(b)
+                            } else {
+                                Some(a)
+                            }
+                        } else if diff_before <= max_time_diff_ms {
+                            Some(b)
+                        } else if diff_after <= max_time_diff_ms {
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    }
+                    (Some(b), None) => {
+                        let diff = photo_timestamp_ms.saturating_sub(b.timestamp_ms);
+                        if diff <= max_time_diff_ms {
+                            Some(b)
+                        } else {
+                            None
+                        }
+                    }
+                    (None, Some(a)) => {
+                        let diff = a.timestamp_ms.saturating_sub(photo_timestamp_ms);
+                        if diff <= max_time_diff_ms {
+                            Some(a)
+                        } else {
+                            None
+                        }
+                    }
+                    (None, None) => None,
+                };
+
+                // Apply the location if found
+                if let Some(point) = selected_point {
+                    // Convert E7 coordinates to decimal degrees
+                    let lat = point.latitude_e7 as f64 / 1e7;
+                    let lon = point.longitude_e7 as f64 / 1e7;
+
+                    context.space.lat = lat;
+                    context.space.lon = lon;
+
+                    // Reverse geocode to get location details
+                    if let Ok(mut location) = reverse_geocode(lat, lon) {
+                        // Preserve the GPS coordinates
+                        location.lat = lat;
+                        location.lon = lon;
+                        context.space = location;
+
+                        // Log Location History source
+                        eprintln!(
+                            "🗺️  GPS from Location History: {:.6}, {:.6} -> {}, {}",
+                            lat, lon, context.space.country, context.space.city
+                        );
+                    }
+                } else {
+                    eprintln!("❌ No location found in History within {max_hours_actual} hours");
+                }
+            } else {
+                eprintln!("❌ No timestamp available for Location History lookup");
+            }
+        } else {
+            eprintln!("❌ No Location History provided");
         }
     }
 

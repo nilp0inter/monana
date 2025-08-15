@@ -7,6 +7,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pipeline {
     pub rulesets: Vec<Ruleset>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_history_path: Option<String>,
+    /// Maximum time difference in hours to search for location history (default: 48)
+    #[serde(default = "default_location_history_max_hours")]
+    pub location_history_max_hours: u64,
+}
+
+fn default_location_history_max_hours() -> u64 {
+    48
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

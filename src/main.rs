@@ -2,11 +2,12 @@ use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Parser;
 use std::fs;
+use std::sync::Arc;
 use walkdir::WalkDir;
 
 use monana::{
     actions::Action,
-    metadata::extractor::extract_metadata,
+    metadata::{LocationHistory, extractor::extract_metadata_with_location_history},
     pipeline::{Pipeline, RuleEngine, Ruleset},
 };
 
@@ -21,6 +22,10 @@ struct Args {
     /// Configuration file
     #[arg(short, long, default_value = "monana.yaml")]
     config: String,
+
+    /// Google Maps Timeline location history JSON file (overrides config)
+    #[arg(long = "location-history", value_name = "PATH")]
+    location_history: Option<String>,
 
     /// Process directories recursively
     #[arg(short = 'R', long)]
@@ -46,6 +51,30 @@ fn main() -> Result<()> {
 
     let pipeline: Pipeline =
         serde_yaml::from_str(&config_content).with_context(|| "Failed to parse configuration")?;
+
+    // Load location history - CLI argument takes precedence over config
+    let location_history_path = args
+        .location_history
+        .as_ref()
+        .or(pipeline.location_history_path.as_ref());
+
+    let location_history = if let Some(path) = location_history_path {
+        match LocationHistory::from_json_file(path) {
+            Ok(history) => {
+                println!("📍 Loaded location history from: {path}");
+                if args.location_history.is_some() {
+                    println!("   (from command line argument)");
+                }
+                Some(Arc::new(history))
+            }
+            Err(e) => {
+                eprintln!("⚠️  Failed to load location history from {path}: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Find all cmdline rulesets
     let cmdline_rulesets: Vec<_> = pipeline
@@ -104,7 +133,15 @@ fn main() -> Result<()> {
                 println!("\n🔄 Processing: {file_path}");
             }
 
-            match process_file(file_path, ruleset, &engine, args.dry_run, args.verbose) {
+            match process_file(
+                file_path,
+                ruleset,
+                &engine,
+                args.dry_run,
+                args.verbose,
+                location_history.clone(),
+                Some(pipeline.location_history_max_hours),
+            ) {
                 Ok(true) => matched += 1,
                 Ok(false) => no_match_files.push(file_path.clone()),
                 Err(e) => {
@@ -178,9 +215,11 @@ fn process_file(
     engine: &RuleEngine,
     dry_run: bool,
     verbose: bool,
+    location_history: Option<Arc<LocationHistory>>,
+    max_hours: Option<u64>,
 ) -> Result<bool> {
     // Extract metadata
-    let context = extract_metadata(file_path)?;
+    let context = extract_metadata_with_location_history(file_path, location_history, max_hours)?;
 
     if verbose {
         println!("  📊 Type: {}", context.r#type);

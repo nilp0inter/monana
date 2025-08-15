@@ -16,8 +16,8 @@ Define clear rules. Honor time and place. Archive for life.
 
 ## 🎯 Key Features
 
-- 🧠 Smart Metadata Extraction  
-  Parses EXIF, file system timestamps, GPS, and even cloud history to build rich temporal & spatial profiles. Access ANY EXIF tag through templates and conditions.
+- 🧠 Smart Metadata Extraction  
+  Parses EXIF, file system timestamps, GPS, and Google Maps Timeline history to build rich temporal & spatial profiles. Access ANY EXIF tag through templates and conditions.
 
 - 🪄 Declarative Rule Engine  
   Write archival logic using clean rulesets and templated paths — no scripting required (unless you want it).
@@ -61,6 +61,12 @@ Run on your media files:
 monana --config ./monana.yaml --input-cmdline /path/to/media
 ```
 
+Run with location history for GPS fallback:
+
+```bash
+monana --config ./monana.yaml --input-cmdline /path/to/media --location-history /path/to/location_history.json
+```
+
 Run with dry-run to preview:
 
 ```bash
@@ -71,9 +77,13 @@ monana --config ./monana.yaml --input-cmdline /path/to/media --dry-run
 
 ## 🗃️ Example Configuration
 
-Here’s a basic declarative pipeline — YAML format:
+Here's a basic declarative pipeline — YAML format:
 
 ```yaml
+# Optional: Google Maps Timeline location history for GPS fallback
+# Photos without EXIF GPS will use location history if within 48 hours
+location_history_path: "/path/to/location_history.json"
+
 # Custom action to create low-res images
 actions:
   create-low-res:
